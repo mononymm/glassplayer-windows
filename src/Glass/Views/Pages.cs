@@ -547,12 +547,8 @@ public sealed class DetailPage : GlassPage
         tg.Children.Add(Art(lib.ArtPath(ep, ep.ThumbUrl) ?? lib.Backdrop(ep), 460));
         if (ep.InProgress) tg.Children.Add(new Border { Child = ProgressBar(ep.Progress, w - 20), Margin = new Thickness(10), VerticalAlignment = VerticalAlignment.Bottom });
         if (ep.Watched) tg.Children.Add(Badge(Icon(IcoCheck, 10, Brushes.White)));
-        var play = new Border
-        {
-            Width = 50, Height = 50, CornerRadius = new CornerRadius(25), Background = new SolidColorBrush(Color.FromArgb(0x70, 0, 0, 0)),
-            BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1), Opacity = 0,
-            Child = Icon(IcoPlay, 17, Brushes.White).With(t => { t.HorizontalAlignment = HorizontalAlignment.Center; t.Margin = new Thickness(3, 0, 0, 0); }),
-        };
+        // same red outline play icon as the Continue watching cards
+        var play = new Grid { Opacity = 0, IsHitTestVisible = false, Children = { PlayOutline(26) } };
         tg.Children.Add(play);
         thumb.Child = tg;
         g.Children.Add(thumb);
