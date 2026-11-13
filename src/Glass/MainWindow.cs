@@ -194,6 +194,22 @@ public sealed class MainWindow : Window, IShell
             if (eps.Any(e => !e.Watched)) list.Add(("Mark show as watched", IcoEye, () => Mark(eps, true)));
             if (eps.Any(e => e.Watched || e.InProgress)) list.Add(("Mark show as unwatched", IcoEyeOff, () => Mark(eps, false)));
         }
+        // upscaling for this show / movie (the mpv script reads it when a file starts)
+        var target = it.Kind == Kind.Episode ? it.Show : it;
+        if (target.Kind is Kind.Show or Kind.Movie)
+        {
+            var folders = ShaderRules.FoldersOf(target);
+            if (folders.Count > 0)
+            {
+                var cur = ShaderRules.Get(settings, folders);
+                list.Add(null);
+                foreach (var (mode, label) in ShaderRules.Modes)
+                {
+                    var m = mode;
+                    list.Add(($"Upscaling: {label}", m == cur ? IcoCheck : "\uE8B9", () => ShaderRules.Set(settings, folders, m)));
+                }
+            }
+        }
         return list;
     }
 
@@ -289,7 +305,14 @@ public sealed class MainWindow : Window, IShell
         };
         if (!settings.SidebarExpanded)
             row.ToolTip = new ToolTip { Content = label, Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
-        row.MouseEnter += (_, _) => { if (!IsActive(row)) { row.Background = NavHover; icon.Foreground = Ui.Accent; text.Foreground = Ui.Text; } };
+        var plain = key == "toggle";
+        row.MouseEnter += (_, _) =>
+        {
+            if (IsActive(row)) return;
+            row.Background = plain ? Ui.GlassFill : NavHover;
+            icon.Foreground = plain ? Ui.Text : Ui.Accent;
+            text.Foreground = Ui.Text;
+        };
         row.MouseLeave += (_, _) => HighlightNav();
         row.MouseLeftButtonUp += (_, e) => { e.Handled = true; click(); };
         return row;

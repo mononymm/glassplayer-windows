@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -34,6 +36,13 @@ jobs:
         shell: pwsh
         run: Compress-Archive -Path mpv\* -DestinationPath Glass-mpv.zip -Force
 
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            out/Glass.exe
+            Glass-mpv.zip
+
       - name: Release notes
         shell: bash
         run: |
@@ -45,6 +54,17 @@ jobs:
             else
               git log --no-merges --pretty='- %s' -n 15
             fi
+            echo
+            echo "## Verify your download"
+            echo "SHA-256:"
+            echo '```'
+            (cd out && sha256sum Glass.exe)
+            sha256sum Glass-mpv.zip
+            echo '```'
+            echo "Built by GitHub Actions from commit ${GITHUB_SHA} ([build log](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})). Check the signed build certificate with:"
+            echo '```'
+            echo "gh attestation verify Glass.exe --repo ${GITHUB_REPOSITORY}"
+            echo '```'
             echo
             echo "> **Heads-up:** the first time you play something (or after switching upscaling or updating your graphics driver), playback can freeze for a few seconds up to about half a minute while mpv builds its shaders for your GPU. It only happens once; after that they're cached."
             echo

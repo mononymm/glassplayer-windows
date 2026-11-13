@@ -14,6 +14,8 @@ public sealed class Section
     public string Name { get; set; } = "";
     public bool IsMovies { get; init; }
     public List<Item> Items { get; } = new();
+    /// <summary>The library's folders on disk.</summary>
+    public List<string> Roots { get; } = new();
 }
 
 public sealed class Item
@@ -179,6 +181,12 @@ public sealed class PlexLibrary
             var t = Convert.ToInt32(r[2]);
             if (t is not (1 or 2)) continue;
             Sections.Add(new Section { Id = Convert.ToInt32(r[0]), PlexName = Str(r[1]), Name = Str(r[1]), IsMovies = t == 1 });
+        }
+
+        foreach (var r in Rows(con, "select library_section_id, root_path from section_locations"))
+        {
+            var sec = Sections.FirstOrDefault(x => x.Id == Int(r[0]));
+            if (sec != null && Str(r[1]) != "") sec.Roots.Add(Str(r[1]));
         }
 
         foreach (var r in Rows(con, @"select id, library_section_id, parent_id, metadata_type, guid, title, title_sort, summary, year, ""index"",

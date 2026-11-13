@@ -29,7 +29,9 @@ optional sync that sends your progress back to Plex.
 - **Plex:** set `plex_db` to Plex's database, replacing `YOUR-USER` with the Windows account that runs
   Plex. If you run mpv from a *different* Windows account, give that account read access:
   `icacls "C:\Users\YOUR-USER\AppData\Local\Plex Media Server" /grant OTHER-USER:(OI)(CI)RX /T`
-- **Upscaling:** download the shaders into `%APPDATA%\mpv\shaders` (for example
+- **Upscaling:** which mode a file uses is chosen like this: a library or show set in the Glass app
+  (Libraries page or right-click → Upscaling) wins; otherwise any word from `anime_folders` in the
+  file's path means 2D Animation, and everything else is Live Action. Download the shaders into `%APPDATA%\mpv\shaders` (for example
   [FSRCNNX](https://github.com/igv/FSRCNN-TensorFlow/releases),
   [ArtCNN](https://github.com/Artoriuz/ArtCNN), and KrigBilateral / SSimDownscaler from
   [igv's gists](https://gist.github.com/igv)). Without them the switch simply does nothing.

@@ -35,3 +35,30 @@ the release also has it as `Glass-mpv.zip`).
 
 Settings live in `%APPDATA%\Glass\settings.json`. Nothing is sent anywhere except to the Plex server
 on your own PC (when it's running) to mark things watched.
+
+## Is it safe? Verify a download, or build it yourself
+
+All the code is in this repository, and every release is built by GitHub Actions straight from it
+(the build logs are public under **Actions**). Each release lists the SHA-256 fingerprint of its files
+and carries a signed build certificate that ties the file to the exact commit and build:
+
+```
+gh attestation verify Glass.exe --repo mononymm/glassplayer-windows
+```
+
+(needs the [GitHub CLI](https://cli.github.com)). To check a fingerprint yourself in PowerShell:
+`Get-FileHash Glass.exe` and compare it with the release notes.
+
+Windows will still say it's from an unrecognized publisher, because the exe isn't signed with a paid
+code-signing certificate.
+
+**Build it yourself** with the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0):
+
+```
+git clone https://github.com/mononymm/glassplayer-windows
+cd glassplayer-windows
+dotnet publish src/Glass/Glass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o out
+```
+
+`out\Glass.exe` is the app.
+

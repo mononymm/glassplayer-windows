@@ -534,7 +534,7 @@ public sealed class LibrariesPage : GlassPage
         this.changed = changed;
         Body.Margin = new Thickness(Ui.Inset, 70, 64, 40);
         Body.Children.Add(T("Libraries", 34, FontWeights.Bold));
-        Body.Children.Add(T("Rename, reorder or hide libraries. The order here is used in the sidebar and on the home page.", 14, color: Muted)
+        Body.Children.Add(T("Rename, reorder or hide libraries, and choose their upscaling (Live Action, 2D Animation or Disabled; Automatic uses words in the folder name). The order here is used in the sidebar and on the home page. Single shows and movies can be set from their right-click menu.", 14, color: Muted)
             .With(t => { t.Margin = new Thickness(0, 6, 0, 28); t.TextWrapping = TextWrapping.Wrap; }));
         Body.Children.Add(list);
         Build();
@@ -561,7 +561,7 @@ public sealed class LibrariesPage : GlassPage
             var row = new Border
             {
                 Background = Ui.GlassFill, BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16),
-                Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 0, 0, 10), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left,
+                Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 0, 0, 10), MaxWidth = 940, HorizontalAlignment = HorizontalAlignment.Left,
                 Opacity = hidden ? 0.55 : 1,
             };
             var g = new DockPanel { LastChildFill = true };
@@ -572,6 +572,26 @@ public sealed class LibrariesPage : GlassPage
             g.Children.Add(arrows);
 
             var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            // upscaling for everything in this library
+            if (s.Roots.Count > 0)
+            {
+                var cur = ShaderRules.Get(st, s.Roots);
+                var picker = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 10, 0) };
+                foreach (var (mode, label) in ShaderRules.Modes)
+                {
+                    var on = mode == cur;
+                    var m = mode;
+                    var pill = Chrome(T(mode == "" ? "Auto" : label, 12, FontWeights.SemiBold, Brushes.White),
+                        on ? Ui.Accent : Ui.GlassFill, on ? Ui.Accent : Ui.GlassHover, new CornerRadius(14), new Thickness(11, 0, 11, 0));
+                    pill.Height = 30;
+                    pill.Margin = new Thickness(0, 0, 5, 0);
+                    pill.ToolTip = "Upscaling for this library";
+                    pill.Click += (_, _) => { ShaderRules.Set(st, s.Roots, m); Build(); };
+                    picker.Children.Add(pill);
+                }
+                right.Children.Add(Icon("\uE8B9", 14, Muted).With(i => { i.Margin = new Thickness(0, 0, 8, 0); i.ToolTip = "Upscaling"; }));
+                right.Children.Add(picker);
+            }
             right.Children.Add(Pill(hidden ? "Show" : "Hide", hidden ? "" : "", () =>
             {
                 if (hidden) st.HiddenSections.Remove(s.Id); else st.HiddenSections.Add(s.Id);

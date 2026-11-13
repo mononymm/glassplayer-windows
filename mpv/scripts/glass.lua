@@ -2785,6 +2785,24 @@ local function shader_list(mode)
 end
 auto_shader_mode = function(path)
     local l = (path or ""):lower()
+    -- 1. folders designated in the Glass app (a library or a show): glass-shaders.json in the mpv folder,
+    --    { "folders": { "D:\\Anime": "anime", "E:\\Shows\\Some Show": "live", ... } }; the longest match wins
+    do
+        local rules = read_json(mp.command_native({ "expand-path", "~~/glass-shaders.json" }))
+        local best, best_len = nil, -1
+        local lp = l:gsub("\\", "/")
+        if type(rules) == "table" and type(rules.folders) == "table" then
+            for folder, mode in pairs(rules.folders) do
+                local fp = tostring(folder):lower():gsub("\\", "/"):gsub("/+$", "")
+                if fp ~= "" and (lp == fp or lp:sub(1, #fp + 1) == fp .. "/") and #fp > best_len
+                    and (mode == "anime" or mode == "live" or mode == "off") then
+                    best, best_len = mode, #fp
+                end
+            end
+        end
+        if best then return best end
+    end
+    -- 2. otherwise: words in the path (anime_folders)
     for w in opts.anime_folders:gmatch("[^,;]+") do
         w = trim(w):lower()
         if w ~= "" and l:find(w, 1, true) then return "anime" end
