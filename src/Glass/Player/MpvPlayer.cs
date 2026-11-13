@@ -15,8 +15,8 @@ public sealed class MpvHost : HwndHost
 
     protected override HandleRef BuildWindowCore(HandleRef parent)
     {
-        const int WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000, WS_CLIPSIBLINGS = 0x04000000;
-        Handle2 = CreateWindowEx(0, "static", "", WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
+        const int SS_NOTIFY = 0x100, WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000, WS_CLIPSIBLINGS = 0x04000000;
+        Handle2 = CreateWindowEx(0, "static", "", SS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
             0, 0, 100, 100, parent.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
         return new HandleRef(this, Handle2);
     }
@@ -64,6 +64,9 @@ public sealed class MpvPlayer
         psi.ArgumentList.Add("--idle=no");
         psi.ArgumentList.Add("--keep-open=no");
         psi.ArgumentList.Add("--force-window=immediate");
+        psi.ArgumentList.Add("--input-cursor=yes");
+        psi.ArgumentList.Add("--input-vo-keyboard=yes");
+        psi.ArgumentList.Add("--log-file=" + Path.Combine(Data.Settings.CacheDir, "mpv.log"));
         psi.ArgumentList.Add($"--playlist-start={start}");
         psi.ArgumentList.Add($"--playlist={playlist}");
 

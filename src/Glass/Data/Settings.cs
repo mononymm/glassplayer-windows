@@ -12,7 +12,12 @@ public sealed class Settings
     public string? MpvPath { get; set; }        // ...\mpv.exe
     public int PlexAccount { get; set; } = 1;
     public double WatchedAt { get; set; } = 0.90;
-    public List<string> HiddenSections { get; set; } = new();
+    public List<int> HiddenSections { get; set; } = new();
+    public List<int> SectionOrder { get; set; } = new();
+    public Dictionary<int, string> SectionNames { get; set; } = new();
+    public Dictionary<int, string> SectionSort { get; set; } = new();
+    public double TileSize { get; set; } = 176;
+    public bool SidebarExpanded { get; set; }
 
     public static string AppDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Glass");
     public static string CacheDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Glass", "cache");

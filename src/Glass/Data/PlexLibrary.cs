@@ -10,7 +10,8 @@ public enum Kind { Movie = 1, Show = 2, Season = 3, Episode = 4 }
 public sealed class Section
 {
     public int Id { get; init; }
-    public string Name { get; init; } = "";
+    public string PlexName { get; init; } = "";
+    public string Name { get; set; } = "";
     public bool IsMovies { get; init; }
     public List<Item> Items { get; } = new();
 }
@@ -166,7 +167,7 @@ public sealed class PlexLibrary
         {
             var t = Convert.ToInt32(r[2]);
             if (t is not (1 or 2)) continue;
-            Sections.Add(new Section { Id = Convert.ToInt32(r[0]), Name = Str(r[1]), IsMovies = t == 1 });
+            Sections.Add(new Section { Id = Convert.ToInt32(r[0]), PlexName = Str(r[1]), Name = Str(r[1]), IsMovies = t == 1 });
         }
 
         foreach (var r in Rows(con, @"select id, library_section_id, parent_id, metadata_type, guid, title, title_sort, summary, year, ""index"",

@@ -24,6 +24,8 @@ public static class Ui
     public static readonly Brush GlassHover = Freeze(new SolidColorBrush(Color.FromArgb(0x33, 0xFF, 0xFF, 0xFF)));
     public static readonly Brush GlassEdge = Freeze(new SolidColorBrush(Color.FromArgb(0x38, 0xFF, 0xFF, 0xFF)));
     public static readonly Brush Placeholder = Freeze(new SolidColorBrush(Color.FromRgb(0x1A, 0x1C, 0x22)));
+    /// <summary>Left edge of page content, clear of the collapsed sidebar.</summary>
+    public const double Inset = 100;
     public static readonly FontFamily Font = new("Inter, Segoe UI Variable Display, Segoe UI");
     public static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets");
 
@@ -76,7 +78,7 @@ public static class Ui
     }
 
     /// <summary>A Button whose whole look is one rounded border with a hover tint.</summary>
-    public static Button Chrome(UIElement content, Brush fill, Brush hover, CornerRadius radius, Thickness padding)
+    public static Button Chrome(UIElement content, Brush fill, Brush hover, CornerRadius radius, Thickness padding, bool stretch = false)
     {
         var tpl = new ControlTemplate(typeof(Button));
         var bd = new FrameworkElementFactory(typeof(Border), "bd");
@@ -86,7 +88,7 @@ public static class Ui
         bd.SetValue(Border.BorderThicknessProperty, new Thickness(fill == Accent ? 0 : 1));
         bd.SetValue(Border.PaddingProperty, padding);
         var cp = new FrameworkElementFactory(typeof(ContentPresenter));
-        cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        cp.SetValue(ContentPresenter.HorizontalAlignmentProperty, stretch ? HorizontalAlignment.Stretch : HorizontalAlignment.Center);
         cp.SetValue(ContentPresenter.VerticalAlignmentProperty, VerticalAlignment.Center);
         bd.AppendChild(cp);
         tpl.VisualTree = bd;
@@ -209,7 +211,7 @@ public static class Ui
     public static FrameworkElement Row(string title, IEnumerable<FrameworkElement> cards, Action? seeAll = null, double gap = 18)
     {
         var outer = new StackPanel { Margin = new Thickness(0, 0, 0, 34) };
-        var head = new DockPanel { Margin = new Thickness(64, 0, 64, 12), LastChildFill = false };
+        var head = new DockPanel { Margin = new Thickness(Ui.Inset, 0, 64, 12), LastChildFill = false };
         var titleText = T(title, 20, FontWeights.Bold);
         head.Children.Add(titleText);
         if (seeAll != null)
@@ -227,7 +229,7 @@ public static class Ui
         }
         outer.Children.Add(head);
 
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(64, 6, 64, 10) };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 6, 64, 10) };
         foreach (var c in cards) { c.Margin = new Thickness(0, 0, gap, 0); panel.Children.Add(c); }
         var sv = new ScrollViewer
         {

@@ -19,6 +19,21 @@ public sealed class MainWindow : Window, IShell
 {
     readonly Settings settings = Settings.Load();
     public PlexLibrary Library { get; private set; }
+    public Settings Settings => settings;
+    public void SaveSettings() => settings.Save();
+
+    public IReadOnlyList<Section> Sections
+    {
+        get
+        {
+            foreach (var s in Library.Sections)
+                s.Name = settings.SectionNames.TryGetValue(s.Id, out var n) && !string.IsNullOrWhiteSpace(n) ? n : s.PlexName;
+            return Library.Sections
+                .Where(s => !settings.HiddenSections.Contains(s.Id))
+                .OrderBy(s => { var i = settings.SectionOrder.IndexOf(s.Id); return i < 0 ? 1000 + s.Id : i; })
+                .ToList();
+        }
+    }
 
     readonly Grid root = new();
     readonly Grid pageHost = new();
@@ -48,6 +63,7 @@ public sealed class MainWindow : Window, IShell
         Library = new PlexLibrary(settings);
 
         root.Children.Add(pageHost);
+        if (settings.SidebarExpanded) pageHost.Margin = new Thickness(NavExpanded - NavCollapsed, 0, 0, 0);
 
         sidebar = BuildSidebar();
         root.Children.Add(sidebar);
@@ -140,41 +156,77 @@ public sealed class MainWindow : Window, IShell
 
     // ---------------------------------------------------------------- sidebar
 
+    const double NavCollapsed = 64, NavExpanded = 236;
+    readonly StackPanel navFooter = new();
+
     Border BuildSidebar()
     {
-        nav.Margin = new Thickness(0, 18, 0, 18);
+        var stack = new DockPanel { LastChildFill = false, Margin = new Thickness(9, 14, 9, 14) };
+        var toggle = NavButton("toggle", "\uE700", settings.SidebarExpanded ? "Collapse" : "Expand", ToggleSidebar);
+        DockPanel.SetDock(toggle, Dock.Top);
+        stack.Children.Add(toggle);
+        DockPanel.SetDock(nav, Dock.Top);
+        nav.Margin = new Thickness(0, 10, 0, 0);
+        stack.Children.Add(nav);
+        DockPanel.SetDock(navFooter, Dock.Top);
+        stack.Children.Add(navFooter);
         var bar = new Border
         {
-            Width = 64, Margin = new Thickness(12), CornerRadius = new CornerRadius(22),
-            Background = new SolidColorBrush(Color.FromArgb(0x8C, 0x16, 0x18, 0x1E)), BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1),
-            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Child = nav,
+            Width = settings.SidebarExpanded ? NavExpanded : NavCollapsed, Margin = new Thickness(12),
+            CornerRadius = new CornerRadius(22), ClipToBounds = true,
+            Background = new SolidColorBrush(Color.FromArgb(0xB8, 0x14, 0x16, 0x1C)), BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1),
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Child = stack,
         };
         bar.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 30, ShadowDepth = 0, Opacity = 0.5, Color = Colors.Black };
         return bar;
+    }
+
+    void ToggleSidebar()
+    {
+        settings.SidebarExpanded = !settings.SidebarExpanded;
+        settings.Save();
+        var to = settings.SidebarExpanded ? NavExpanded : NavCollapsed;
+        var dur = TimeSpan.FromMilliseconds(260);
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        sidebar.BeginAnimation(WidthProperty, new DoubleAnimation(to, dur) { EasingFunction = ease });
+        // push the page over so nothing hides behind the wider bar
+        pageHost.BeginAnimation(MarginProperty, new ThicknessAnimation(new Thickness(settings.SidebarExpanded ? NavExpanded - NavCollapsed : 0, 0, 0, 0), dur) { EasingFunction = ease });
+        RebuildNav();
     }
 
     void RebuildNav()
     {
         nav.Children.Clear();
         nav.Children.Add(NavButton("home", IcoHome, "Home", () => GoTo("home", () => new HomePage(this))));
-        foreach (var s in Library.Sections.Where(s => !settings.HiddenSections.Contains(s.Name)))
+        foreach (var s in Sections)
         {
             var sec = s;
             nav.Children.Add(NavButton("section:" + s.Id, s.IsMovies ? IcoMovie : IcoTv, s.Name, () => GoTo("section:" + sec.Id, () => new SectionPage(this, sec))));
         }
-        nav.Children.Add(NavButton("search", IcoSearch, "Search  (Ctrl+F)", () => GoTo("search", () => new SearchPage(this))));
-        nav.Children.Add(new Border { Height = 1, Background = Ui.GlassEdge, Margin = new Thickness(16, 8, 16, 8) });
-        nav.Children.Add(NavButton("refresh", IcoRefresh, "Refresh library", async () => await Reload(goHome: currentKey == "home")));
-        nav.Children.Add(NavButton("settings", IcoSettings, "Settings", ShowSettings));
+        nav.Children.Add(NavButton("search", IcoSearch, "Search", () => GoTo("search", () => new SearchPage(this))));
+        navFooter.Children.Clear();
+        navFooter.Children.Add(new Border { Height = 1, Background = Ui.GlassEdge, Margin = new Thickness(8, 10, 8, 10) });
+        navFooter.Children.Add(NavButton("libraries", "\uE70F", "Edit libraries", () => GoTo("libraries", () => new LibrariesPage(this, RebuildNav))));
+        navFooter.Children.Add(NavButton("refresh", IcoRefresh, "Refresh", async () => await Reload(goHome: currentKey == "home")));
+        navFooter.Children.Add(NavButton("settings", IcoSettings, "Settings", ShowSettings));
         HighlightNav();
     }
 
-    Button NavButton(string key, string glyph, string tip, Action click)
+    Button NavButton(string key, string glyph, string label, Action click)
     {
-        var b = Chrome(Icon(glyph, 18, Ui.Muted).With(i => i.HorizontalAlignment = HorizontalAlignment.Center),
-            Brushes.Transparent, Ui.GlassFill, new CornerRadius(14), new Thickness(0));
-        b.Width = 46; b.Height = 46; b.Margin = new Thickness(0, 3, 0, 3); b.Tag = key; b.BorderThickness = new Thickness(0);
-        b.ToolTip = new ToolTip { Content = tip, Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
+        var g = new Grid { Height = 44 };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        g.Children.Add(Icon(glyph, 17, Ui.Muted).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
+        var text = T(label, 14, FontWeights.SemiBold, Ui.Muted).With(t => { t.VerticalAlignment = VerticalAlignment.Center; t.Margin = new Thickness(2, 0, 10, 0); });
+        Grid.SetColumn(text, 1);
+        text.Visibility = settings.SidebarExpanded ? Visibility.Visible : Visibility.Collapsed;
+        g.Children.Add(text);
+        var b = Chrome(g, Brushes.Transparent, Ui.GlassFill, new CornerRadius(14), new Thickness(0), stretch: true);
+        b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        b.Margin = new Thickness(0, 2, 0, 2); b.Tag = key; b.BorderThickness = new Thickness(0);
+        if (!settings.SidebarExpanded)
+            b.ToolTip = new ToolTip { Content = label, Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
         b.Click += (_, _) => click();
         return b;
     }
@@ -182,9 +234,11 @@ public sealed class MainWindow : Window, IShell
     void HighlightNav()
     {
         var key = currentKey.StartsWith("item:") ? "" : currentKey;
-        foreach (var c in nav.Children)
-            if (c is Button b && b.Content is TextBlock t)
-                t.Foreground = (string?)b.Tag == key ? Ui.Accent : Ui.Muted;
+        foreach (var panel in new[] { nav, navFooter })
+            foreach (var c in panel.Children)
+                if (c is Button { Content: Grid g } b)
+                    foreach (var t in g.Children.OfType<TextBlock>())
+                        t.Foreground = (string?)b.Tag == key ? Ui.Accent : Ui.Muted;
     }
 
     // ---------------------------------------------------------------- playback
@@ -235,7 +289,7 @@ public sealed class MainWindow : Window, IShell
         FrameworkElement? page = null;
         if (key == "home") page = new HomePage(this);
         else if (key.StartsWith("item:") && int.TryParse(key[5..], out var id) && Library.ById.TryGetValue(id, out var it)) page = new DetailPage(this, it);
-        else if (key.StartsWith("section:") && int.TryParse(key[8..], out var sid) && Library.Sections.FirstOrDefault(s => s.Id == sid) is { } sec) page = new SectionPage(this, sec);
+        else if (key.StartsWith("section:") && int.TryParse(key[8..], out var sid) && Sections.FirstOrDefault(s => s.Id == sid) is { } sec) page = new SectionPage(this, sec);
         if (page == null) return;
         // older pages in the back stack keep old progress; that's fine for v1
         Show(page, key, animate: false, scroll);

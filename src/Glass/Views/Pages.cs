@@ -15,6 +15,10 @@ namespace Glass.Views;
 public interface IShell
 {
     PlexLibrary Library { get; }
+    Settings Settings { get; }
+    /// <summary>Libraries in the user's order, with their chosen names, hidden ones left out.</summary>
+    IReadOnlyList<Section> Sections { get; }
+    void SaveSettings();
     void Navigate(FrameworkElement page, string key);
     void Play(Item item);
     void OpenItem(Item item);
@@ -115,7 +119,11 @@ public sealed class HomePage : GlassPage
 {
     readonly IShell shell;
     readonly Backdrop backdrop = new(720);
-    readonly StackPanel heroText = new() { Margin = new Thickness(64, 150, 0, 0), MaxWidth = 620, HorizontalAlignment = HorizontalAlignment.Left };
+    readonly StackPanel heroText = new()
+    {
+        Margin = new Thickness(Ui.Inset, 110, 0, 96), MaxWidth = 620,
+        HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
+    };
     readonly DispatcherTimer rotate = new() { Interval = TimeSpan.FromSeconds(11) };
     List<Item> heroItems = new();
     int heroIndex;
@@ -125,8 +133,10 @@ public sealed class HomePage : GlassPage
         this.shell = shell;
         var lib = shell.Library;
 
-        var hero = new Grid { Height = 620 };
-        hero.Children.Add(backdrop.With(b => b.Height = 720));
+        var hero = new Grid { MinHeight = 640 };
+        backdrop.Height = double.NaN;
+        backdrop.VerticalAlignment = VerticalAlignment.Stretch;
+        hero.Children.Add(backdrop);
         hero.Children.Add(heroText);
         Body.Children.Add(hero);
 
@@ -139,7 +149,7 @@ public sealed class HomePage : GlassPage
 
         var cw = lib.ContinueWatching();
         heroItems = cw.Take(6).ToList();
-        if (heroItems.Count == 0) heroItems = lib.Sections.SelectMany(s => lib.RecentlyAdded(s, 3)).Take(6).ToList();
+        if (heroItems.Count == 0) heroItems = shell.Sections.SelectMany(s => lib.RecentlyAdded(s, 3)).Take(6).ToList();
         ShowHero(0);
         if (heroItems.Count > 1)
         {
@@ -149,15 +159,16 @@ public sealed class HomePage : GlassPage
             Loaded += (_, _) => rotate.Start();
         }
 
-        // rows pull up into the bottom of the backdrop
-        var rows = new StackPanel { Margin = new Thickness(0, -120, 0, 40) };
+        // rows tuck into the faded bottom of the backdrop; the hero text keeps clear of them
+        var rows = new StackPanel { Margin = new Thickness(0, -48, 0, 40) };
+        var tile = shell.Settings.TileSize;
         if (cw.Count > 0)
-            rows.Children.Add(Row("Continue watching", cw.Select(i => StillCard(lib, i, 340, () => shell.Play(i)))));
-        foreach (var s in lib.Sections)
+            rows.Children.Add(Row("Continue watching", cw.Select(i => StillCard(lib, i, tile * 1.93, () => shell.Play(i)))));
+        foreach (var s in shell.Sections)
         {
             var recent = lib.RecentlyAdded(s, 24);
             if (recent.Count == 0) continue;
-            rows.Children.Add(Row(s.Name, recent.Select(i => PosterCard(lib, i, 176, () => shell.OpenItem(i))), () => shell.OpenSection(s)));
+            rows.Children.Add(Row(s.Name, recent.Select(i => PosterCard(lib, i, tile, () => shell.OpenItem(i))), () => shell.OpenSection(s)));
         }
         Body.Children.Add(rows);
     }
@@ -224,17 +235,89 @@ public sealed class HomePage : GlassPage
 
 public sealed class SectionPage : GlassPage
 {
-    public SectionPage(IShell shell, Section s, IEnumerable<Item>? items = null, string? title = null)
+    public static readonly (string key, string label)[] Sorts =
     {
-        var lib = shell.Library;
+        ("title", "Title"), ("added", "Recently added"), ("year", "Release date"), ("watched", "Recently watched"), ("unwatched", "Unwatched first"),
+    };
+
+    readonly IShell shell;
+    readonly Section section;
+    readonly WrapPanel wrap = new() { Margin = new Thickness(Ui.Inset - 6, 0, 40, 0) };
+    readonly StackPanel sortBar = new() { Orientation = Orientation.Horizontal };
+
+    public SectionPage(IShell shell, Section s)
+    {
+        this.shell = shell;
+        section = s;
         Body.Margin = new Thickness(0, 40, 0, 40);
-        Body.Children.Add(T(title ?? s.Name, 34, FontWeights.Bold).With(t => t.Margin = new Thickness(64, 30, 64, 6)));
-        var list = (items ?? s.Items).ToList();
-        Body.Children.Add(T($"{list.Count} {(s.IsMovies ? "movies" : "shows")}", 14, color: Muted).With(t => t.Margin = new Thickness(64, 0, 64, 24)));
-        var wrap = new WrapPanel { Margin = new Thickness(58, 0, 40, 0) };
-        foreach (var it in list)
-            wrap.Children.Add(PosterCard(lib, it, 172, () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, 18, 22)));
+        Body.Children.Add(T(s.Name, 34, FontWeights.Bold).With(t => t.Margin = new Thickness(Ui.Inset, 30, 64, 6)));
+        Body.Children.Add(T($"{s.Items.Count} {(s.IsMovies ? "movies" : "shows")}", 14, color: Muted).With(t => t.Margin = new Thickness(Ui.Inset, 0, 64, 18)));
+
+        var tools = new DockPanel { Margin = new Thickness(Ui.Inset, 0, 64, 26), LastChildFill = false };
+        DockPanel.SetDock(sortBar, Dock.Left);
+        tools.Children.Add(sortBar);
+        var size = new Slider
+        {
+            Minimum = 120, Maximum = 300, Value = shell.Settings.TileSize, Width = 160, VerticalAlignment = VerticalAlignment.Center,
+            IsMoveToPointEnabled = true, ToolTip = "Tile size (Ctrl + mouse wheel)",
+        };
+        var sizeRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        sizeRow.Children.Add(Icon("", 12, Muted).With(i => i.Margin = new Thickness(0, 0, 10, 0)));
+        sizeRow.Children.Add(size);
+        sizeRow.Children.Add(Icon("", 18, Muted).With(i => i.Margin = new Thickness(10, 0, 0, 0)));
+        DockPanel.SetDock(sizeRow, Dock.Right);
+        tools.Children.Add(sizeRow);
+        Body.Children.Add(tools);
         Body.Children.Add(wrap);
+
+        size.ValueChanged += (_, e) => { shell.Settings.TileSize = Math.Round(e.NewValue); Fill(); };
+        size.PreviewMouseUp += (_, _) => shell.SaveSettings();
+        PreviewMouseWheel += (_, e) =>
+        {
+            if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
+            e.Handled = true;
+            size.Value = Math.Clamp(size.Value + (e.Delta > 0 ? 12 : -12), size.Minimum, size.Maximum);
+            shell.SaveSettings();
+        };
+        BuildSortBar();
+        Fill();
+    }
+
+    string SortKey => shell.Settings.SectionSort.TryGetValue(section.Id, out var k) ? k : "title";
+
+    void BuildSortBar()
+    {
+        sortBar.Children.Clear();
+        foreach (var (key, label) in Sorts)
+        {
+            var on = key == SortKey;
+            var b = Chrome(T(label, 13, FontWeights.SemiBold, Brushes.White), on ? Ui.Accent : Ui.GlassFill, on ? Ui.Accent : Ui.GlassHover,
+                new CornerRadius(16), new Thickness(14, 0, 14, 0));
+            b.Height = 32;
+            b.Margin = new Thickness(0, 0, 8, 0);
+            var k = key;
+            b.Click += (_, _) => { shell.Settings.SectionSort[section.Id] = k; shell.SaveSettings(); BuildSortBar(); Fill(); };
+            sortBar.Children.Add(b);
+        }
+    }
+
+    public static IEnumerable<Item> Sort(IEnumerable<Item> items, string key) => key switch
+    {
+        "added" => items.OrderByDescending(i => i.Kind == Kind.Show ? i.Episodes.Select(e => e.Added).DefaultIfEmpty(i.Added).Max() : i.Added),
+        "year" => items.OrderByDescending(i => i.Aired ?? new DateTime(Math.Max(1, i.Year), 1, 1)),
+        "watched" => items.OrderByDescending(i => i.Kind == Kind.Show ? i.Episodes.Select(e => e.LastViewed).DefaultIfEmpty(DateTime.MinValue).Max() : i.LastViewed),
+        "unwatched" => items.OrderBy(i => i.Kind == Kind.Show ? (i.UnwatchedCount > 0 ? 0 : 1) : (i.Watched ? 1 : 0))
+                            .ThenBy(i => string.IsNullOrEmpty(i.SortTitle) ? i.Title : i.SortTitle, StringComparer.OrdinalIgnoreCase),
+        _ => items.OrderBy(i => string.IsNullOrEmpty(i.SortTitle) ? i.Title : i.SortTitle, StringComparer.OrdinalIgnoreCase),
+    };
+
+    void Fill()
+    {
+        wrap.Children.Clear();
+        var tile = shell.Settings.TileSize;
+        var lib = shell.Library;
+        foreach (var it in Sort(section.Items, SortKey))
+            wrap.Children.Add(PosterCard(lib, it, tile, () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, Math.Max(12, tile * 0.1), 22)));
     }
 }
 
@@ -247,12 +330,12 @@ public sealed class SearchPage : GlassPage
         var box = new TextBox
         {
             FontSize = 22, FontFamily = Font, Foreground = Ui.Text, Background = Ui.GlassFill, BorderBrush = Ui.GlassEdge,
-            BorderThickness = new Thickness(1), Padding = new Thickness(18, 10, 18, 10), Margin = new Thickness(64, 0, 64, 30),
+            BorderThickness = new Thickness(1), Padding = new Thickness(18, 10, 18, 10), Margin = new Thickness(Ui.Inset, 0, 64, 30),
             CaretBrush = Ui.Accent, MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left, Width = 760,
         };
         box.Resources.Add(typeof(Border), new Style(typeof(Border)) { Setters = { new Setter(Border.CornerRadiusProperty, new CornerRadius(24)) } });
-        var results = new WrapPanel { Margin = new Thickness(58, 0, 40, 0) };
-        var hint = T("Search shows and movies", 14, color: Muted).With(t => t.Margin = new Thickness(66, -18, 0, 20));
+        var results = new WrapPanel { Margin = new Thickness(Ui.Inset - 6, 0, 40, 0) };
+        var hint = T("Search shows and movies", 14, color: Muted).With(t => t.Margin = new Thickness(Ui.Inset + 2, -18, 0, 20));
         Body.Children.Add(box);
         Body.Children.Add(hint);
         Body.Children.Add(results);
@@ -264,7 +347,7 @@ public sealed class SearchPage : GlassPage
             var found = lib.Search(box.Text);
             hint.Text = box.Text.Trim() == "" ? "Search shows and movies" : found.Count == 0 ? "No matches" : $"{found.Count} result{(found.Count == 1 ? "" : "s")}";
             foreach (var it in found)
-                results.Children.Add(PosterCard(lib, it, 160, () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, 18, 22)));
+                results.Children.Add(PosterCard(lib, it, shell.Settings.TileSize, () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, 18, 22)));
         };
         box.TextChanged += (_, _) => { debounce.Stop(); debounce.Start(); };
         Loaded += (_, _) => box.Focus();
@@ -275,8 +358,8 @@ public sealed class DetailPage : GlassPage
 {
     readonly IShell shell;
     readonly Item item;
-    readonly StackPanel episodes = new() { Margin = new Thickness(64, 0, 64, 0) };
-    readonly StackPanel seasonTabs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(64, 0, 64, 20) };
+    readonly StackPanel episodes = new() { Margin = new Thickness(Ui.Inset, 0, 64, 0) };
+    readonly StackPanel seasonTabs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 0, 64, 20) };
     Item? season;
 
     public DetailPage(IShell shell, Item it)
@@ -285,12 +368,16 @@ public sealed class DetailPage : GlassPage
         item = it.Show;
         var lib = shell.Library;
 
-        var hero = new Grid { Height = 600 };
-        var bd = new Backdrop(760);
+        var hero = new Grid { MinHeight = 600 };
+        var bd = new Backdrop(760) { Height = double.NaN, VerticalAlignment = VerticalAlignment.Stretch };
         hero.Children.Add(bd);
         bd.Show(lib.Backdrop(item));
 
-        var info = new StackPanel { Margin = new Thickness(64, 130, 0, 0), MaxWidth = 640, HorizontalAlignment = HorizontalAlignment.Left };
+        var info = new StackPanel
+        {
+            Margin = new Thickness(Ui.Inset, 110, 0, 70), MaxWidth = 640,
+            HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Bottom,
+        };
         info.Children.Add(TitleArt.For(lib, item, 540, 200));
         var meta = new List<string>();
         if (item.Year > 0) meta.Add(item.Year.ToString());
@@ -329,7 +416,7 @@ public sealed class DetailPage : GlassPage
         {
             var seasons = item.Children.Where(s => s.Children.Any(e => e.File != null)).OrderBy(s => s.Index == 0 ? int.MaxValue : s.Index).ToList();
             var start = next?.Season ?? seasons.FirstOrDefault();
-            Body.Children.Add(seasonTabs.With(p => p.Margin = new Thickness(64, -40, 64, 22)));
+            Body.Children.Add(seasonTabs.With(p => p.Margin = new Thickness(Ui.Inset, -20, 64, 22)));
             foreach (var s in seasons)
             {
                 var name = s.Title != "" ? s.Title : s.Index == 0 ? "Specials" : $"Season {s.Index}";
@@ -418,5 +505,108 @@ public sealed class DetailPage : GlassPage
         row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; play.BeginAnimation(OpacityProperty, new DoubleAnimation(0, dur)); };
         row.MouseLeftButtonUp += (_, _) => shell.Play(ep);
         return row;
+    }
+}
+
+/// <summary>Rename, reorder and hide libraries (used by the sidebar and the home page).</summary>
+public sealed class LibrariesPage : GlassPage
+{
+    readonly IShell shell;
+    readonly Action changed;
+    readonly StackPanel list = new();
+
+    public LibrariesPage(IShell shell, Action changed)
+    {
+        this.shell = shell;
+        this.changed = changed;
+        Body.Margin = new Thickness(Ui.Inset, 70, 64, 40);
+        Body.Children.Add(T("Libraries", 34, FontWeights.Bold));
+        Body.Children.Add(T("Rename, reorder or hide libraries. The order here is used in the sidebar and on the home page.", 14, color: Muted)
+            .With(t => { t.Margin = new Thickness(0, 6, 0, 28); t.TextWrapping = TextWrapping.Wrap; }));
+        Body.Children.Add(list);
+        Build();
+    }
+
+    List<Section> Ordered()
+    {
+        var st = shell.Settings;
+        return shell.Library.Sections
+            .OrderBy(s => { var i = st.SectionOrder.IndexOf(s.Id); return i < 0 ? 1000 + s.Id : i; })
+            .ToList();
+    }
+
+    void Build()
+    {
+        list.Children.Clear();
+        var st = shell.Settings;
+        var all = Ordered();
+        for (int i = 0; i < all.Count; i++)
+        {
+            var s = all[i];
+            var idx = i;
+            var hidden = st.HiddenSections.Contains(s.Id);
+            var row = new Border
+            {
+                Background = Ui.GlassFill, BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(16),
+                Padding = new Thickness(14, 10, 14, 10), Margin = new Thickness(0, 0, 0, 10), MaxWidth = 760, HorizontalAlignment = HorizontalAlignment.Left,
+                Opacity = hidden ? 0.55 : 1,
+            };
+            var g = new DockPanel { LastChildFill = true };
+            var arrows = new StackPanel { Orientation = Orientation.Horizontal };
+            arrows.Children.Add(Round("", () => Move(all, idx, -1), 34, "Move up").With(b => { b.IsEnabled = idx > 0; b.Opacity = idx > 0 ? 1 : 0.3; }));
+            arrows.Children.Add(Round("", () => Move(all, idx, +1), 34, "Move down").With(b => { b.Margin = new Thickness(6, 0, 12, 0); b.IsEnabled = idx < all.Count - 1; b.Opacity = idx < all.Count - 1 ? 1 : 0.3; }));
+            DockPanel.SetDock(arrows, Dock.Left);
+            g.Children.Add(arrows);
+
+            var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            right.Children.Add(Pill(hidden ? "Show" : "Hide", hidden ? "" : "", () =>
+            {
+                if (hidden) st.HiddenSections.Remove(s.Id); else st.HiddenSections.Add(s.Id);
+                Save();
+            }, height: 34));
+            if (st.SectionNames.ContainsKey(s.Id))
+                right.Children.Add(Pill("Reset name", null, () => { st.SectionNames.Remove(s.Id); Save(); }, height: 34).With(b => b.Margin = new Thickness(8, 0, 0, 0)));
+            DockPanel.SetDock(right, Dock.Right);
+            g.Children.Add(right);
+
+            var icon = Icon(s.IsMovies ? IcoMovie : IcoTv, 16, Muted).With(t => t.Margin = new Thickness(0, 0, 12, 0));
+            DockPanel.SetDock(icon, Dock.Left);
+            g.Children.Add(icon);
+
+            var box = new TextBox
+            {
+                Text = st.SectionNames.TryGetValue(s.Id, out var n) ? n : s.PlexName, FontSize = 15, FontFamily = Font, FontWeight = FontWeights.SemiBold,
+                Foreground = Ui.Text, Background = Brushes.Transparent, BorderThickness = new Thickness(0, 0, 0, 1), BorderBrush = Ui.GlassEdge,
+                CaretBrush = Ui.Accent, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 0, 14, 0), Padding = new Thickness(2, 4, 2, 4),
+                ToolTip = $"Plex name: {s.PlexName}",
+            };
+            box.LostFocus += (_, _) =>
+            {
+                var v = box.Text.Trim();
+                if (v == "" || v == s.PlexName) st.SectionNames.Remove(s.Id); else st.SectionNames[s.Id] = v;
+                shell.SaveSettings();
+                changed();
+            };
+            box.KeyDown += (_, e) => { if (e.Key == Key.Enter) Keyboard.ClearFocus(); };
+            g.Children.Add(box);
+            row.Child = g;
+            list.Children.Add(row);
+        }
+    }
+
+    void Move(List<Section> all, int i, int by)
+    {
+        var j = i + by;
+        if (j < 0 || j >= all.Count) return;
+        (all[i], all[j]) = (all[j], all[i]);
+        shell.Settings.SectionOrder = all.Select(s => s.Id).ToList();
+        Save();
+    }
+
+    void Save()
+    {
+        shell.SaveSettings();
+        changed();
+        Build();
     }
 }
