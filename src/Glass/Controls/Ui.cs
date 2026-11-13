@@ -183,7 +183,7 @@ public static class Ui
     // ---------------------------------------------------------------- tile sizes (fixed steps)
 
     public static readonly (string label, double size)[] TileSizes =
-        { ("Small", 136), ("Medium", 168), ("Large", 204), ("Extra large", 248) };
+        { ("Extra small", 136), ("Small", 168), ("Medium", 204), ("Large", 248), ("Extra large", 300) };
 
     public static double SnapTile(double v) => TileSizes.OrderBy(t => Math.Abs(t.size - v)).First().size;
 
@@ -202,7 +202,7 @@ public static class Ui
         {
             var (label, size) = TileSizes[i];
             var on = size == now;
-            var hgt = 10 + i * 3.5;
+            var hgt = 9 + i * 3;
             var glyph = new Border
             {
                 Width = hgt * 0.68, Height = hgt, CornerRadius = new CornerRadius(2.5),
