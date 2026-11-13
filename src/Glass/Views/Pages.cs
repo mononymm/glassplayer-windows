@@ -213,7 +213,7 @@ public sealed class HomePage : GlassPage
             fresh.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0),
-                Children = { ProgressBar(it.Progress, 200), T(it.RemainingText, 12, FontWeights.SemiBold, Muted).With(t => t.Margin = new Thickness(12, -4, 0, 0)) }
+                Children = { ((FrameworkElement)ProgressBar(it.Progress, 200)).With(b => b.VerticalAlignment = VerticalAlignment.Center), T(it.RemainingText, 12, FontWeights.SemiBold, Muted).With(t => { t.Margin = new Thickness(12, 0, 0, 0); t.VerticalAlignment = VerticalAlignment.Center; }) }
             });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 22, 0, 0) };
         buttons.Children.Add(Pill(it.InProgress ? "Resume" : "Play", IcoPlay, () => shell.Play(it), accent: true, height: 44));
@@ -413,7 +413,7 @@ public sealed class DetailPage : GlassPage
             info.Children.Add(new StackPanel
             {
                 Orientation = Orientation.Horizontal, Margin = new Thickness(0, 20, 0, 0),
-                Children = { ProgressBar(next.Progress, 200), T(next.RemainingText, 12, FontWeights.SemiBold, Muted).With(t => t.Margin = new Thickness(12, -4, 0, 0)) }
+                Children = { ((FrameworkElement)ProgressBar(next.Progress, 200)).With(b => b.VerticalAlignment = VerticalAlignment.Center), T(next.RemainingText, 12, FontWeights.SemiBold, Muted).With(t => { t.Margin = new Thickness(12, 0, 0, 0); t.VerticalAlignment = VerticalAlignment.Center; }) }
             });
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, next != null && next.InProgress ? 12 : 24, 0, 0) };
         if (next != null)
