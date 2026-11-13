@@ -240,22 +240,42 @@ public static class Ui
 
         var host = new Grid();
         host.Children.Add(sv);
-        var left = Round(IcoChevronL, () => SmoothScroll.ScrollRow(sv, -sv.ViewportWidth * 0.8), 44);
-        var right = Round(IcoChevronR, () => SmoothScroll.ScrollRow(sv, sv.ViewportWidth * 0.8), 44);
-        foreach (var (b, al) in new[] { (left, HorizontalAlignment.Left), (right, HorizontalAlignment.Right) })
+        // full-height strips at both edges: click anywhere on them to scroll the row
+        Border Edge(bool left)
         {
-            b.HorizontalAlignment = al; b.VerticalAlignment = VerticalAlignment.Center; b.Margin = new Thickness(12, 0, 12, 40);
-            b.Opacity = 0; b.IsHitTestVisible = false;
-            b.Background = Brushes.Transparent;
-            host.Children.Add(b);
+            var c = Ui.BgColor;
+            var fade = new LinearGradientBrush(
+                Color.FromArgb(0xF0, c.R, c.G, c.B), Color.FromArgb(0x00, c.R, c.G, c.B), left ? 0 : 180);
+            var chevron = Icon(left ? IcoChevronL : IcoChevronR, 22, Brushes.White).With(i =>
+            {
+                i.HorizontalAlignment = left ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+                i.Margin = new Thickness(left ? 22 : 0, 0, left ? 0 : 22, 0);
+                i.Opacity = 0.75;
+            });
+            var strip = new Border
+            {
+                Width = 84, Background = fade, Child = chevron, Cursor = Cursors.Hand,
+                HorizontalAlignment = left ? HorizontalAlignment.Left : HorizontalAlignment.Right,
+                Margin = new Thickness(left ? Inset - 24 : 0, 0, 0, 34),   // stop above the titles under the cards
+                Opacity = 0, IsHitTestVisible = false,
+            };
+            strip.MouseEnter += (_, _) => chevron.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
+            strip.MouseLeave += (_, _) => chevron.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.75, TimeSpan.FromMilliseconds(120)));
+            strip.MouseLeftButtonUp += (_, e) => { e.Handled = true; SmoothScroll.ScrollRow(sv, (left ? -1 : 1) * sv.ViewportWidth * 0.8); };
+            strip.MouseLeftButtonDown += (_, e) => e.Handled = true;
+            return strip;
         }
+        var leftEdge = Edge(true);
+        var rightEdge = Edge(false);
+        host.Children.Add(leftEdge);
+        host.Children.Add(rightEdge);
         void Arrows(bool show)
         {
-            var dur = TimeSpan.FromMilliseconds(150);
-            left.IsHitTestVisible = show && sv.HorizontalOffset > 1;
-            right.IsHitTestVisible = show && sv.HorizontalOffset < sv.ScrollableWidth - 1;
-            left.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(left.IsHitTestVisible ? 1 : 0, dur));
-            right.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(right.IsHitTestVisible ? 1 : 0, dur));
+            var dur = TimeSpan.FromMilliseconds(160);
+            leftEdge.IsHitTestVisible = show && sv.HorizontalOffset > 1;
+            rightEdge.IsHitTestVisible = show && sv.HorizontalOffset < sv.ScrollableWidth - 1;
+            leftEdge.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(leftEdge.IsHitTestVisible ? 1 : 0, dur));
+            rightEdge.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(rightEdge.IsHitTestVisible ? 1 : 0, dur));
         }
         host.MouseEnter += (_, _) => Arrows(true);
         host.MouseLeave += (_, _) => Arrows(false);

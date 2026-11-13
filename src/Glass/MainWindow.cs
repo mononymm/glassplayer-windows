@@ -40,7 +40,6 @@ public sealed class MainWindow : Window, IShell
     readonly Border sidebar;
     readonly StackPanel nav = new();
     readonly Grid playerLayer = new() { Background = Brushes.Black, Visibility = Visibility.Collapsed };
-    readonly MpvHost mpvHost = new();
     readonly Border loading;
     MpvPlayer? mpv;
 
@@ -68,8 +67,12 @@ public sealed class MainWindow : Window, IShell
         sidebar = BuildSidebar();
         root.Children.Add(sidebar);
 
-        playerLayer.Children.Add(mpvHost);
+        playerLayer.Children.Add(T("Starting mpv…", 14, color: Ui.Muted).With(t => { t.HorizontalAlignment = HorizontalAlignment.Center; t.VerticalAlignment = VerticalAlignment.Center; }));
         root.Children.Add(playerLayer);
+        // mpv's window follows the app window
+        LocationChanged += (_, _) => SyncPlayer();
+        SizeChanged += (_, _) => SyncPlayer();
+        playerLayer.MouseLeftButtonDown += (_, _) => mpv?.Focus();
 
         loading = new Border
         {
@@ -161,7 +164,7 @@ public sealed class MainWindow : Window, IShell
 
     Border BuildSidebar()
     {
-        var stack = new DockPanel { LastChildFill = false, Margin = new Thickness(9, 14, 9, 14) };
+        var stack = new DockPanel { LastChildFill = false, Margin = new Thickness(8, 14, 8, 14) };
         var toggle = NavButton("toggle", "\uE700", settings.SidebarExpanded ? "Collapse" : "Expand", ToggleSidebar);
         DockPanel.SetDock(toggle, Dock.Top);
         stack.Children.Add(toggle);
@@ -260,9 +263,24 @@ public sealed class MainWindow : Window, IShell
         playerLayer.Visibility = Visibility.Visible;
         playerLayer.Opacity = 0;
         playerLayer.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
-        // let WPF create the child window before mpv attaches to it
-        Dispatcher.BeginInvoke(() => mpv.Play(mpvHost.Handle2, list.Select(i => i.File!).ToList(), start),
+        Dispatcher.BeginInvoke(() => mpv.Play(new WindowInteropHelper(this).Handle, PlayerRect(), list.Select(i => i.File!).ToList(), start),
             System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>The player area in screen pixels.</summary>
+    (int x, int y, int w, int h) PlayerRect()
+    {
+        var src = PresentationSource.FromVisual(root);
+        if (src?.CompositionTarget == null) return (0, 0, 1280, 720);
+        var m = src.CompositionTarget.TransformToDevice;
+        var tl = root.PointToScreen(new Point(0, 0));
+        return ((int)Math.Round(tl.X), (int)Math.Round(tl.Y), (int)Math.Round(root.ActualWidth * m.M11), (int)Math.Round(root.ActualHeight * m.M22));
+    }
+
+    void SyncPlayer()
+    {
+        if (mpv?.Running == true && playerLayer.Visibility == Visibility.Visible && WindowState != WindowState.Minimized)
+            mpv.SetBounds(PlayerRect());
     }
 
     MpvPlayer CreatePlayer()
@@ -279,7 +297,8 @@ public sealed class MainWindow : Window, IShell
             await Reload(goHome: false);
             RefreshCurrent(keep);
         });
-        p.FullscreenChanged += fs => Dispatcher.BeginInvoke(() => SetFullscreen(fs));
+        // mpv handles its own fullscreen now; when it comes back, put it over the player area again
+        p.FullscreenChanged += fs => Dispatcher.BeginInvoke(() => { if (!fs) SyncPlayer(); });
         return p;
     }
 

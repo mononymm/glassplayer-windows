@@ -4,40 +4,24 @@ using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
-using System.Windows.Interop;
 
 namespace Glass.Player;
 
-/// <summary>A plain child window that mpv draws into (via --wid).</summary>
-public sealed class MpvHost : HwndHost
-{
-    public IntPtr Handle2 { get; private set; }
-
-    protected override HandleRef BuildWindowCore(HandleRef parent)
-    {
-        const int SS_NOTIFY = 0x100, WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000, WS_CLIPSIBLINGS = 0x04000000;
-        Handle2 = CreateWindowEx(0, "static", "", SS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_CLIPCHILDREN | WS_CLIPSIBLINGS,
-            0, 0, 100, 100, parent.Handle, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero);
-        return new HandleRef(this, Handle2);
-    }
-
-    protected override void DestroyWindowCore(HandleRef hwnd) => DestroyWindow(hwnd.Handle);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-    static extern IntPtr CreateWindowEx(int exStyle, string cls, string name, int style, int x, int y, int w, int h,
-        IntPtr parent, IntPtr menu, IntPtr inst, IntPtr param);
-
-    [DllImport("user32.dll")]
-    static extern bool DestroyWindow(IntPtr hwnd);
-}
-
-/// <summary>Runs the user's own mpv (config, scripts, shaders and all) inside the app window.</summary>
+/// <summary>
+/// Runs the user's own mpv (config, scripts, shaders and all) as a borderless window that sits exactly
+/// over the app's player area and follows it. mpv gets mouse and keyboard input directly this way
+/// (embedding with --wid cuts mpv off from input on Windows).
+/// </summary>
 public sealed class MpvPlayer
 {
     Process? proc;
     NamedPipeClientStream? pipe;
     StreamWriter? writer;
     readonly string mpvPath;
+    IntPtr hwnd;
+    IntPtr owner;
+    bool mpvFullscreen;
+    (int x, int y, int w, int h) bounds;
 
     public event Action? Exited;
     public event Action<bool>? FullscreenChanged;
@@ -45,9 +29,14 @@ public sealed class MpvPlayer
 
     public MpvPlayer(string mpvPath) { this.mpvPath = mpvPath; }
 
-    public void Play(IntPtr wid, IReadOnlyList<string> files, int start)
+    /// <param name="ownerHwnd">The app window; mpv stays above it and minimizes with it.</param>
+    /// <param name="rect">Player area in screen pixels.</param>
+    public void Play(IntPtr ownerHwnd, (int x, int y, int w, int h) rect, IReadOnlyList<string> files, int start)
     {
         Stop();
+        owner = ownerHwnd;
+        bounds = rect;
+        mpvFullscreen = false;
         var pipeName = "glass-desktop-" + Environment.ProcessId;
         var playlist = Path.Combine(Data.Settings.CacheDir, "playlist.m3u");
         Directory.CreateDirectory(Data.Settings.CacheDir);
@@ -59,13 +48,17 @@ public sealed class MpvPlayer
             CreateNoWindow = true,
             WorkingDirectory = Path.GetDirectoryName(mpvPath) ?? "",
         };
-        psi.ArgumentList.Add($"--wid={wid.ToInt64()}");
         psi.ArgumentList.Add($"--input-ipc-server=\\\\.\\pipe\\{pipeName}");
         psi.ArgumentList.Add("--idle=no");
         psi.ArgumentList.Add("--keep-open=no");
         psi.ArgumentList.Add("--force-window=immediate");
-        psi.ArgumentList.Add("--input-cursor=yes");
-        psi.ArgumentList.Add("--input-vo-keyboard=yes");
+        psi.ArgumentList.Add("--border=no");
+        psi.ArgumentList.Add("--title-bar=no");
+        psi.ArgumentList.Add("--fullscreen=no");
+        psi.ArgumentList.Add("--snap-window=no");
+        psi.ArgumentList.Add("--auto-window-resize=no");
+        psi.ArgumentList.Add("--keepaspect-window=no");
+        psi.ArgumentList.Add($"--geometry={rect.w}x{rect.h}+{rect.x}+{rect.y}");
         psi.ArgumentList.Add("--log-file=" + Path.Combine(Data.Settings.CacheDir, "mpv.log"));
         psi.ArgumentList.Add($"--playlist-start={start}");
         psi.ArgumentList.Add($"--playlist={playlist}");
@@ -77,16 +70,32 @@ public sealed class MpvPlayer
         proc.Exited += (_, _) =>
         {
             if (!ReferenceEquals(mine, proc)) return;
+            hwnd = IntPtr.Zero;
             CloseIpc();
             Exited?.Invoke();
         };
+        _ = AttachWindowAsync(mine);
         _ = ConnectAsync(pipeName, mine);
+    }
+
+    /// <summary>Keep mpv's window on the player area (call when the app window moves or resizes).</summary>
+    public void SetBounds((int x, int y, int w, int h) rect)
+    {
+        bounds = rect;
+        if (hwnd == IntPtr.Zero || mpvFullscreen) return;
+        SetWindowPos(hwnd, IntPtr.Zero, rect.x, rect.y, rect.w, rect.h, SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+    }
+
+    public void Focus()
+    {
+        if (hwnd != IntPtr.Zero) SetForegroundWindow(hwnd);
     }
 
     public void Stop()
     {
         var p = proc;
         proc = null;
+        hwnd = IntPtr.Zero;
         CloseIpc();
         if (p is { HasExited: false })
         {
@@ -96,11 +105,28 @@ public sealed class MpvPlayer
 
     public void Command(params object[] args)
     {
-        try
+        try { writer?.WriteLine(JsonSerializer.Serialize(new { command = args })); } catch { }
+    }
+
+    async Task AttachWindowAsync(Process p)
+    {
+        for (int i = 0; i < 100 && ReferenceEquals(p, proc) && !p.HasExited; i++)
         {
-            writer?.WriteLine(JsonSerializer.Serialize(new { command = args }));
+            p.Refresh();
+            var h = p.MainWindowHandle;
+            if (h != IntPtr.Zero)
+            {
+                hwnd = h;
+                // owned by the app: stays above it, hides with it, no second taskbar button
+                SetWindowLongPtr(h, GWLP_HWNDPARENT, owner);
+                var ex = GetWindowLongPtr(h, GWL_EXSTYLE).ToInt64();
+                SetWindowLongPtr(h, GWL_EXSTYLE, new IntPtr(ex & ~WS_EX_APPWINDOW));
+                SetBounds(bounds);
+                SetForegroundWindow(h);
+                return;
+            }
+            await Task.Delay(50);
         }
-        catch { }
     }
 
     async Task ConnectAsync(string name, Process owner)
@@ -136,7 +162,9 @@ public sealed class MpvPlayer
                         && r.TryGetProperty("name", out var n) && n.GetString() == "fullscreen"
                         && r.TryGetProperty("data", out var d) && (d.ValueKind == JsonValueKind.True || d.ValueKind == JsonValueKind.False))
                     {
-                        FullscreenChanged?.Invoke(d.GetBoolean());
+                        mpvFullscreen = d.GetBoolean();
+                        if (!mpvFullscreen) SetBounds(bounds);   // back onto the player area
+                        FullscreenChanged?.Invoke(mpvFullscreen);
                     }
                 }
                 catch { }
@@ -152,4 +180,17 @@ public sealed class MpvPlayer
         writer = null;
         pipe = null;
     }
+
+    const int GWLP_HWNDPARENT = -8, GWL_EXSTYLE = -20;
+    const long WS_EX_APPWINDOW = 0x40000;
+    const uint SWP_NOZORDER = 0x4, SWP_NOACTIVATE = 0x10, SWP_NOOWNERZORDER = 0x200;
+
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW")]
+    static extern IntPtr SetWindowLongPtr(IntPtr h, int index, IntPtr value);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtrW")]
+    static extern IntPtr GetWindowLongPtr(IntPtr h, int index);
+    [DllImport("user32.dll")]
+    static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hgt, uint flags);
+    [DllImport("user32.dll")]
+    static extern bool SetForegroundWindow(IntPtr h);
 }
