@@ -19,6 +19,8 @@ public interface IShell
     /// <summary>Libraries in the user's order, with their chosen names, hidden ones left out.</summary>
     IReadOnlyList<Section> Sections { get; }
     void SaveSettings();
+    /// <summary>Rebuild the current page in place (keeps the scroll position).</summary>
+    void RefreshPage();
     void Navigate(FrameworkElement page, string key);
     void Play(Item item, bool fromStart = false);
     void OpenItem(Item item);
@@ -160,8 +162,22 @@ public sealed class HomePage : GlassPage
         }
 
         // rows tuck into the faded bottom of the backdrop; the hero text keeps clear of them
-        var rows = new StackPanel { Margin = new Thickness(0, -48, 0, 40) };
-        var tile = shell.Settings.TileSize;
+        var rows = new StackPanel { Margin = new Thickness(0, -60, 0, 40) };
+        var tile = SnapTile(shell.Settings.TileSize);
+        void SetTile(double size)
+        {
+            if (size == tile) return;
+            shell.Settings.TileSize = size;
+            shell.SaveSettings();
+            shell.RefreshPage();
+        }
+        rows.Children.Add(TilePicker(tile, SetTile).With(p => p.Margin = new Thickness(0, 0, 64, -24)));
+        PreviewMouseWheel += (_, e) =>
+        {
+            if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
+            e.Handled = true;
+            SetTile(StepTile(tile, e.Delta > 0 ? 1 : -1));
+        };
         if (cw.Count > 0)
             rows.Children.Add(Row("Continue watching", cw.Select(i => StillCard(lib, i, tile * 1.93, () => shell.Play(i)))));
         foreach (var s in shell.Sections)
@@ -256,31 +272,27 @@ public sealed class SectionPage : GlassPage
         var tools = new DockPanel { Margin = new Thickness(Ui.Inset, 0, 64, 26), LastChildFill = false };
         DockPanel.SetDock(sortBar, Dock.Left);
         tools.Children.Add(sortBar);
-        var size = new Slider
-        {
-            Minimum = 120, Maximum = 300, Value = shell.Settings.TileSize, Width = 160, VerticalAlignment = VerticalAlignment.Center,
-            IsMoveToPointEnabled = true, ToolTip = "Tile size (Ctrl + mouse wheel)",
-        };
-        var sizeRow = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        sizeRow.Children.Add(Icon("", 12, Muted).With(i => i.Margin = new Thickness(0, 0, 10, 0)));
-        sizeRow.Children.Add(size);
-        sizeRow.Children.Add(Icon("", 18, Muted).With(i => i.Margin = new Thickness(10, 0, 0, 0)));
-        DockPanel.SetDock(sizeRow, Dock.Right);
-        tools.Children.Add(sizeRow);
+        var picker = TilePicker(shell.Settings.TileSize, SetTile);
+        DockPanel.SetDock(picker, Dock.Right);
+        tools.Children.Add(picker);
         Body.Children.Add(tools);
         Body.Children.Add(wrap);
-
-        size.ValueChanged += (_, e) => { shell.Settings.TileSize = Math.Round(e.NewValue); Fill(); };
-        size.PreviewMouseUp += (_, _) => shell.SaveSettings();
         PreviewMouseWheel += (_, e) =>
         {
             if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
             e.Handled = true;
-            size.Value = Math.Clamp(size.Value + (e.Delta > 0 ? 12 : -12), size.Minimum, size.Maximum);
-            shell.SaveSettings();
+            SetTile(StepTile(shell.Settings.TileSize, e.Delta > 0 ? 1 : -1));
         };
         BuildSortBar();
         Fill();
+    }
+
+    void SetTile(double size)
+    {
+        if (size == SnapTile(shell.Settings.TileSize)) return;
+        shell.Settings.TileSize = size;
+        shell.SaveSettings();
+        shell.RefreshPage();
     }
 
     string SortKey => shell.Settings.SectionSort.TryGetValue(section.Id, out var k) ? k : "title";
@@ -314,7 +326,7 @@ public sealed class SectionPage : GlassPage
     void Fill()
     {
         wrap.Children.Clear();
-        var tile = shell.Settings.TileSize;
+        var tile = SnapTile(shell.Settings.TileSize);
         var lib = shell.Library;
         foreach (var it in Sort(section.Items, SortKey))
             wrap.Children.Add(PosterCard(lib, it, tile, () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, Math.Max(12, tile * 0.1), 22)));
@@ -347,7 +359,7 @@ public sealed class SearchPage : GlassPage
             var found = lib.Search(box.Text);
             hint.Text = box.Text.Trim() == "" ? "Search shows and movies" : found.Count == 0 ? "No matches" : $"{found.Count} result{(found.Count == 1 ? "" : "s")}";
             foreach (var it in found)
-                results.Children.Add(PosterCard(lib, it, shell.Settings.TileSize, () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, 18, 22)));
+                results.Children.Add(PosterCard(lib, it, SnapTile(shell.Settings.TileSize), () => shell.OpenItem(it)).With(c => c.Margin = new Thickness(6, 6, 18, 22)));
         };
         box.TextChanged += (_, _) => { debounce.Stop(); debounce.Start(); };
         Loaded += (_, _) => box.Focus();

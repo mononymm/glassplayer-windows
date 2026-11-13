@@ -101,30 +101,53 @@ public static class Ui
         return new Button { Template = tpl, Content = content, Cursor = Cursors.Hand, Focusable = false };
     }
 
-    /// <summary>Grow + red glow + thin red rim on hover for cards.</summary>
-    public static void Hoverable(FrameworkElement el, Border frame)
+    /// <summary>
+    /// Hover for cards: a small lift (mostly upward, so titles below stay clear), a red glow and a thin
+    /// red rim drawn inside the card's own rounded corners.
+    /// </summary>
+    public static void Hoverable(Border frame, Grid content, double radius)
     {
         var st = new ScaleTransform(1, 1);
-        el.RenderTransform = st;
-        el.RenderTransformOrigin = new Point(0.5, 0.5);
-        el.Cursor = Cursors.Hand;
+        frame.RenderTransform = st;
+        frame.RenderTransformOrigin = new Point(0.5, 0.85);
+        frame.Cursor = Cursors.Hand;
         var glow = new DropShadowEffect { Color = Color.FromRgb(0xFF, 0x3B, 0x36), BlurRadius = 0, ShadowDepth = 0, Opacity = 0 };
         frame.Effect = glow;
-        var rim = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x55)) { Opacity = 0 };
-        frame.BorderBrush = rim;
-        frame.BorderThickness = new Thickness(1.5);
+        var rimBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x55)) { Opacity = 0 };
+        content.Children.Add(new Border
+        {
+            CornerRadius = new CornerRadius(radius), BorderThickness = new Thickness(1.5), BorderBrush = rimBrush, IsHitTestVisible = false,
+        });
         var dur = TimeSpan.FromMilliseconds(170);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-        void To(double s, double o, double blur, double r)
+        void To(double sc, double o, double blur, double r)
         {
-            st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(s, dur) { EasingFunction = ease });
-            st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(s, dur) { EasingFunction = ease });
+            st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(sc, dur) { EasingFunction = ease });
+            st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(sc, dur) { EasingFunction = ease });
             glow.BeginAnimation(DropShadowEffect.OpacityProperty, new DoubleAnimation(o, dur));
             glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, new DoubleAnimation(blur, dur));
-            rim.BeginAnimation(SolidColorBrush.OpacityProperty, new DoubleAnimation(r, dur));
+            rimBrush.BeginAnimation(SolidColorBrush.OpacityProperty, new DoubleAnimation(r, dur));
         }
-        el.MouseEnter += (_, _) => { Panel.SetZIndex(el, 1); To(1.045, 0.95, 34, 0.9); };
-        el.MouseLeave += (_, _) => { Panel.SetZIndex(el, 0); To(1, 0, 0, 0); };
+        frame.MouseEnter += (_, _) => { if (frame.Parent is UIElement p) Panel.SetZIndex(p, 1); To(1.025, 0.9, 30, 0.9); };
+        frame.MouseLeave += (_, _) => { if (frame.Parent is UIElement p) Panel.SetZIndex(p, 0); To(1, 0, 0, 0); };
+    }
+
+    /// <summary>Red outlined play triangle with a glow, centred on its visual weight.</summary>
+    public static FrameworkElement PlayOutline(double size)
+    {
+        var w = size * 0.86; var h = size;
+        var path = new System.Windows.Shapes.Path
+        {
+            Data = Geometry.Parse($"M 0,0 L {w.ToString(System.Globalization.CultureInfo.InvariantCulture)},{(h / 2).ToString(System.Globalization.CultureInfo.InvariantCulture)} L 0,{h.ToString(System.Globalization.CultureInfo.InvariantCulture)} Z"),
+            Stroke = Accent, StrokeThickness = 2.6, StrokeLineJoin = PenLineJoin.Round,
+            Effect = new DropShadowEffect { Color = AccentColor, BlurRadius = 14, ShadowDepth = 0, Opacity = 0.95 },
+            IsHitTestVisible = false,
+            // a triangle's weight sits a third of the way in, not halfway: nudge it right by w/6
+            RenderTransform = new TranslateTransform(w / 6, 0),
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
+            Width = w, Height = h, Stretch = Stretch.None,
+        };
+        return path;
     }
 
     public static UIElement ProgressBar(double value, double width)
@@ -142,6 +165,52 @@ public static class Ui
     };
 
     /// <summary>Portrait poster card (shows, movies, seasons).</summary>
+    // ---------------------------------------------------------------- tile sizes (fixed steps)
+
+    public static readonly (string label, double size)[] TileSizes =
+        { ("Small", 136), ("Medium", 168), ("Large", 204), ("Extra large", 248) };
+
+    public static double SnapTile(double v) => TileSizes.OrderBy(t => Math.Abs(t.size - v)).First().size;
+
+    public static double StepTile(double v, int by)
+    {
+        var i = Array.FindIndex(TileSizes, t => t.size == SnapTile(v));
+        return TileSizes[Math.Clamp(i + by, 0, TileSizes.Length - 1)].size;
+    }
+
+    /// <summary>Glass pill with four poster icons of growing size; the current one is red.</summary>
+    public static FrameworkElement TilePicker(double current, Action<double> pick)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        var now = SnapTile(current);
+        for (int i = 0; i < TileSizes.Length; i++)
+        {
+            var (label, size) = TileSizes[i];
+            var on = size == now;
+            var hgt = 10 + i * 3.5;
+            var glyph = new Border
+            {
+                Width = hgt * 0.68, Height = hgt, CornerRadius = new CornerRadius(2.5),
+                BorderThickness = new Thickness(1.6), BorderBrush = on ? Accent : Muted,
+                Background = on ? new SolidColorBrush(Color.FromArgb(0x40, AccentColor.R, AccentColor.G, AccentColor.B)) : Brushes.Transparent,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var b = Chrome(glyph, on ? new SolidColorBrush(Color.FromArgb(0x2E, AccentColor.R, AccentColor.G, AccentColor.B)) : Brushes.Transparent,
+                GlassFill, new CornerRadius(12), new Thickness(0));
+            b.Width = 34; b.Height = 30; b.BorderThickness = new Thickness(0);
+            b.ToolTip = label + " tiles";
+            var sz = size;
+            b.Click += (_, _) => pick(sz);
+            row.Children.Add(b);
+        }
+        return new Border
+        {
+            Child = row, Background = GlassFill, BorderBrush = GlassEdge, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(16), Padding = new Thickness(3), HorizontalAlignment = HorizontalAlignment.Right,
+            ToolTip = "Tile size (Ctrl + mouse wheel)",
+        };
+    }
+
     /// <summary>Set by the window: builds the right-click entries for an item.</summary>
     public static Func<Item, IEnumerable<(string, string, Action)?>>? MenuFor;
 
@@ -149,9 +218,8 @@ public static class Ui
     {
         var h = w * 1.5;
         var frame = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(10), Background = Placeholder };
-        var g = new Grid();
-        var img = Art(lib.Poster(it), (int)(w * 1.6));
-        g.Children.Add(new Border { CornerRadius = new CornerRadius(10), Child = img, Clip = new RectangleGeometry(new Rect(0, 0, w, h), 10, 10) });
+        var g = new Grid { Clip = new RectangleGeometry(new Rect(0, 0, w, h), 10, 10) };
+        g.Children.Add(Art(lib.Poster(it), (int)Math.Round(w * 1.6 / 40) * 40));
         if (it.Kind is Kind.Movie && it.Watched || it.Kind is Kind.Show && it.UnwatchedCount == 0)
             g.Children.Add(Badge(Icon(IcoCheck, 10, Brushes.White)));
         else if (it.Kind is Kind.Show && it.UnwatchedCount > 0 && it.Episodes.Any(e => e.Watched))
@@ -164,7 +232,7 @@ public static class Ui
         sp.Children.Add(T(it.DisplayTitle, 13, FontWeights.SemiBold).With(t => t.Margin = new Thickness(2, 8, 2, 0)));
         var sub = it.Kind == Kind.Show ? $"{it.Children.Count} season{(it.Children.Count == 1 ? "" : "s")}" : it.SubLine;
         if (sub != "") sp.Children.Add(T(sub, 12, color: Muted).With(t => t.Margin = new Thickness(2, 2, 2, 0)));
-        Hoverable(frame, frame);
+        Hoverable(frame, g, 10);
         sp.Cursor = Cursors.Hand;
         sp.MouseLeftButtonUp += (_, e) => { e.Handled = true; onClick(); };
         sp.ToolTip = null;
@@ -178,7 +246,7 @@ public static class Ui
         var h = w * 9 / 16;
         var frame = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(12), Background = Placeholder };
         var g = new Grid { Clip = new RectangleGeometry(new Rect(0, 0, w, h), 12, 12) };
-        g.Children.Add(Art(lib.Still(it), (int)(w * 1.5)));
+        g.Children.Add(Art(lib.Still(it), (int)Math.Round(w * 1.5 / 80) * 80));
         g.Children.Add(new Rectangle
         {
             Fill = new LinearGradientBrush(Colors.Transparent, Color.FromArgb(0xB0, 0, 0, 0), 90),
@@ -193,12 +261,7 @@ public static class Ui
                 i.VerticalAlignment = VerticalAlignment.Bottom; i.Margin = new Thickness(12, 0, 0, 18);
             }));
         if (it.InProgress) g.Children.Add(new Border { Child = ProgressBar(it.Progress, w - 24), Margin = new Thickness(12, 0, 12, 9), VerticalAlignment = VerticalAlignment.Bottom });
-        var play = new Border
-        {
-            Width = 46, Height = 46, CornerRadius = new CornerRadius(23), Background = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)),
-            BorderBrush = GlassEdge, BorderThickness = new Thickness(1), Opacity = 0,
-            Child = Icon(IcoPlay, 16, Brushes.White).With(t => { t.HorizontalAlignment = HorizontalAlignment.Center; t.Margin = new Thickness(3, 0, 0, 0); }),
-        };
+        var play = new Grid { Opacity = 0, IsHitTestVisible = false, Children = { PlayOutline(26) } };
         g.Children.Add(play);
         frame.Child = g;
 
@@ -207,7 +270,7 @@ public static class Ui
         sp.Children.Add(T(it.DisplayTitle, 14, FontWeights.SemiBold).With(t => t.Margin = new Thickness(2, 9, 2, 0)));
         var sub = it.Kind == Kind.Episode ? $"{it.Code} · {it.Title}" : it.SubLine;
         sp.Children.Add(T(sub + (it.InProgress ? "  ·  " + it.RemainingText : ""), 12, color: Muted).With(t => t.Margin = new Thickness(2, 2, 2, 0)));
-        Hoverable(frame, frame);
+        Hoverable(frame, g, 12);
         frame.MouseEnter += (_, _) => play.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(150)));
         frame.MouseLeave += (_, _) => play.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(150)));
         sp.Cursor = Cursors.Hand;

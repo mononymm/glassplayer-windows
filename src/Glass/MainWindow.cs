@@ -21,6 +21,7 @@ public sealed class MainWindow : Window, IShell
     public PlexLibrary Library { get; private set; }
     public Settings Settings => settings;
     public void SaveSettings() => settings.Save();
+    public void RefreshPage() => RefreshCurrent(currentKey);
 
     public IReadOnlyList<Section> Sections
     {
@@ -207,28 +208,28 @@ public sealed class MainWindow : Window, IShell
 
     // ---------------------------------------------------------------- sidebar
 
-    const double NavCollapsed = 64, NavExpanded = 236;
+    const double NavCollapsed = 60, NavExpanded = 232;
     readonly StackPanel navFooter = new();
+    readonly StackPanel navHeader = new();
 
     Border BuildSidebar()
     {
-        var stack = new DockPanel { LastChildFill = false, Margin = new Thickness(8, 14, 8, 14) };
-        var toggle = NavButton("toggle", "\uE700", settings.SidebarExpanded ? "Collapse" : "Expand", ToggleSidebar);
-        DockPanel.SetDock(toggle, Dock.Top);
-        stack.Children.Add(toggle);
+        var stack = new DockPanel { LastChildFill = false, Margin = new Thickness(6) };
+        DockPanel.SetDock(navHeader, Dock.Top);
+        stack.Children.Add(navHeader);
         DockPanel.SetDock(nav, Dock.Top);
-        nav.Margin = new Thickness(0, 10, 0, 0);
+        nav.Margin = new Thickness(0, 4, 0, 0);
         stack.Children.Add(nav);
         DockPanel.SetDock(navFooter, Dock.Top);
         stack.Children.Add(navFooter);
         var bar = new Border
         {
             Width = settings.SidebarExpanded ? NavExpanded : NavCollapsed, Margin = new Thickness(12),
-            CornerRadius = new CornerRadius(22), ClipToBounds = true,
-            Background = new SolidColorBrush(Color.FromArgb(0xB8, 0x14, 0x16, 0x1C)), BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(18),
+            Background = new SolidColorBrush(Color.FromArgb(0xF0, 0x17, 0x19, 0x1F)), BorderBrush = Ui.GlassEdge, BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Child = stack,
         };
-        bar.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 30, ShadowDepth = 0, Opacity = 0.5, Color = Colors.Black };
+        bar.Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.55, Color = Colors.Black };
         return bar;
     }
 
@@ -247,6 +248,14 @@ public sealed class MainWindow : Window, IShell
 
     void RebuildNav()
     {
+        navHeader.Children.Clear();
+        navHeader.Children.Add(NavButton("toggle", "\uE700", "Glass", ToggleSidebar).With(b =>
+        {
+            // expanded: the label reads as the app's name
+            if (b.Child is Grid g && g.Children.OfType<TextBlock>().LastOrDefault() is { } t) { t.FontWeight = FontWeights.Bold; t.FontSize = 15; }
+            if (!settings.SidebarExpanded) b.ToolTip = new ToolTip { Content = "Expand", Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
+        }));
+        navHeader.Children.Add(new Border { Height = 1, Background = Ui.GlassEdge, Margin = new Thickness(6, 4, 6, 2) });
         nav.Children.Clear();
         nav.Children.Add(NavButton("home", IcoHome, "Home", () => GoTo("home", () => new HomePage(this))));
         foreach (var s in Sections)
@@ -256,40 +265,58 @@ public sealed class MainWindow : Window, IShell
         }
         nav.Children.Add(NavButton("search", IcoSearch, "Search", () => GoTo("search", () => new SearchPage(this))));
         navFooter.Children.Clear();
-        navFooter.Children.Add(new Border { Height = 1, Background = Ui.GlassEdge, Margin = new Thickness(8, 10, 8, 10) });
+        navFooter.Children.Add(new Border { Height = 1, Background = Ui.GlassEdge, Margin = new Thickness(6, 6, 6, 6) });
         navFooter.Children.Add(NavButton("libraries", "\uE70F", "Edit libraries", () => GoTo("libraries", () => new LibrariesPage(this, RebuildNav))));
         navFooter.Children.Add(NavButton("refresh", IcoRefresh, "Refresh", async () => await Reload(goHome: currentKey == "home")));
         navFooter.Children.Add(NavButton("settings", IcoSettings, "Settings", ShowSettings));
         HighlightNav();
     }
 
-    Button NavButton(string key, string glyph, string label, Action click)
+    static readonly Brush NavHover = new SolidColorBrush(Color.FromArgb(0x24, 0xF0, 0x30, 0x2C));
+    static readonly Brush NavActive = new SolidColorBrush(Color.FromArgb(0x38, 0xF0, 0x30, 0x2C));
+
+    /// <summary>A sidebar row in the same style as the right-click menu: icon column, label when expanded.</summary>
+    Border NavButton(string key, string glyph, string label, Action click)
     {
-        var g = new Grid { Height = 44 };
+        var g = new Grid { Height = 42 };
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(46) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        g.Children.Add(Icon(glyph, 17, Ui.Muted).With(i => i.HorizontalAlignment = HorizontalAlignment.Center));
-        var text = T(label, 14, FontWeights.SemiBold, Ui.Muted).With(t => { t.VerticalAlignment = VerticalAlignment.Center; t.Margin = new Thickness(2, 0, 10, 0); });
+        var icon = Icon(glyph, 16, Ui.Muted).With(i => { i.HorizontalAlignment = HorizontalAlignment.Center; i.TextAlignment = TextAlignment.Center; });
+        g.Children.Add(icon);
+        var text = T(label, 13.5, FontWeights.SemiBold, Ui.Muted).With(t => { t.VerticalAlignment = VerticalAlignment.Center; t.Margin = new Thickness(0, 0, 12, 0); });
         Grid.SetColumn(text, 1);
         text.Visibility = settings.SidebarExpanded ? Visibility.Visible : Visibility.Collapsed;
         g.Children.Add(text);
-        var b = Chrome(g, Brushes.Transparent, Ui.GlassFill, new CornerRadius(14), new Thickness(0), stretch: true);
-        b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
-        b.Margin = new Thickness(0, 2, 0, 2); b.Tag = key; b.BorderThickness = new Thickness(0);
+        var row = new Border
+        {
+            Child = g, CornerRadius = new CornerRadius(11), Margin = new Thickness(0, 1, 0, 1), Tag = key,
+            Background = Brushes.Transparent, Cursor = Cursors.Hand,
+        };
         if (!settings.SidebarExpanded)
-            b.ToolTip = new ToolTip { Content = label, Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
-        b.Click += (_, _) => click();
-        return b;
+            row.ToolTip = new ToolTip { Content = label, Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
+        row.MouseEnter += (_, _) => { if (!IsActive(row)) { row.Background = NavHover; icon.Foreground = Ui.Accent; text.Foreground = Ui.Text; } };
+        row.MouseLeave += (_, _) => HighlightNav();
+        row.MouseLeftButtonUp += (_, e) => { e.Handled = true; click(); };
+        return row;
+    }
+
+    bool IsActive(Border row)
+    {
+        var key = currentKey.StartsWith("item:") ? "" : currentKey;
+        return (string?)row.Tag == key;
     }
 
     void HighlightNav()
     {
-        var key = currentKey.StartsWith("item:") ? "" : currentKey;
         foreach (var panel in new[] { nav, navFooter })
             foreach (var c in panel.Children)
-                if (c is Button { Content: Grid g } b)
+                if (c is Border { Child: Grid g } row && row.Tag is string)
+                {
+                    var on = IsActive(row);
+                    row.Background = on ? NavActive : Brushes.Transparent;
                     foreach (var t in g.Children.OfType<TextBlock>())
-                        t.Foreground = (string?)b.Tag == key ? Ui.Accent : Ui.Muted;
+                        t.Foreground = on ? (t.FontFamily == Ui.Icons ? Ui.Accent : Ui.Text) : Ui.Muted;
+                }
     }
 
     // ---------------------------------------------------------------- playback
