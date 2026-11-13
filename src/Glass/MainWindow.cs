@@ -249,12 +249,7 @@ public sealed class MainWindow : Window, IShell
     void RebuildNav()
     {
         navHeader.Children.Clear();
-        navHeader.Children.Add(NavButton("toggle", "\uE700", "Glass", ToggleSidebar).With(b =>
-        {
-            // expanded: the label reads as the app's name
-            if (b.Child is Grid g && g.Children.OfType<TextBlock>().LastOrDefault() is { } t) { t.FontWeight = FontWeights.Bold; t.FontSize = 15; }
-            if (!settings.SidebarExpanded) b.ToolTip = new ToolTip { Content = "Expand", Placement = System.Windows.Controls.Primitives.PlacementMode.Right };
-        }));
+        navHeader.Children.Add(NavButton("toggle", "\uE700", settings.SidebarExpanded ? "Collapse" : "Expand", ToggleSidebar));
         navHeader.Children.Add(new Border { Height = 1, Background = Ui.GlassEdge, Margin = new Thickness(6, 4, 6, 2) });
         nav.Children.Clear();
         nav.Children.Add(NavButton("home", IcoHome, "Home", () => GoTo("home", () => new HomePage(this))));

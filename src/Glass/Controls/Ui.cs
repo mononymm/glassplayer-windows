@@ -132,22 +132,37 @@ public static class Ui
         frame.MouseLeave += (_, _) => { if (frame.Parent is UIElement p) Panel.SetZIndex(p, 0); To(1, 0, 0, 0); };
     }
 
-    /// <summary>Red outlined play triangle with a glow, centred on its visual weight.</summary>
+    /// <summary>
+    /// Red outlined play triangle with a soft glow, centred on its visual weight. Drawn in a roomy box
+    /// so the glow fades out naturally instead of being cut off square at the triangle's edges.
+    /// </summary>
     public static FrameworkElement PlayOutline(double size)
     {
+        var box = size * 3;
         var w = size * 0.86; var h = size;
-        var path = new System.Windows.Shapes.Path
+        // a triangle's weight sits a third of the way in from its flat side: put that point at the centre
+        var x0 = box / 2 - w / 3; var y0 = box / 2 - h / 2;
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        var geo = Geometry.Parse(string.Format(inv, "M {0},{1} L {2},{3} L {0},{4} Z", x0, y0, x0 + w, box / 2, y0 + h));
+        geo.Freeze();
+        var canvas = new Grid { Width = box, Height = box, IsHitTestVisible = false, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        // glow: a wide, blurred copy of the outline
+        canvas.Children.Add(new System.Windows.Shapes.Path
         {
-            Data = Geometry.Parse($"M 0,0 L {w.ToString(System.Globalization.CultureInfo.InvariantCulture)},{(h / 2).ToString(System.Globalization.CultureInfo.InvariantCulture)} L 0,{h.ToString(System.Globalization.CultureInfo.InvariantCulture)} Z"),
-            Stroke = Accent, StrokeThickness = 2.6, StrokeLineJoin = PenLineJoin.Round,
-            Effect = new DropShadowEffect { Color = AccentColor, BlurRadius = 14, ShadowDepth = 0, Opacity = 0.95 },
-            IsHitTestVisible = false,
-            // a triangle's weight sits a third of the way in, not halfway: nudge it right by w/6
-            RenderTransform = new TranslateTransform(w / 6, 0),
-            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center,
-            Width = w, Height = h, Stretch = Stretch.None,
-        };
-        return path;
+            Data = geo, Stroke = Accent, StrokeThickness = 7, StrokeLineJoin = PenLineJoin.Round, Opacity = 0.55,
+            Effect = new BlurEffect { Radius = 12, KernelType = KernelType.Gaussian },
+        });
+        // a dark halo so the outline reads on bright stills
+        canvas.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = geo, Stroke = new SolidColorBrush(Color.FromArgb(0x70, 0, 0, 0)), StrokeThickness = 5, StrokeLineJoin = PenLineJoin.Round,
+            Effect = new BlurEffect { Radius = 4 },
+        });
+        canvas.Children.Add(new System.Windows.Shapes.Path
+        {
+            Data = geo, Stroke = new SolidColorBrush(Color.FromRgb(0xFF, 0x45, 0x40)), StrokeThickness = 2.6, StrokeLineJoin = PenLineJoin.Round,
+        });
+        return canvas;
     }
 
     public static UIElement ProgressBar(double value, double width)
@@ -218,8 +233,12 @@ public static class Ui
     {
         var h = w * 1.5;
         var frame = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(10), Background = Placeholder };
-        var g = new Grid { Clip = new RectangleGeometry(new Rect(0, 0, w, h), 10, 10) };
-        g.Children.Add(Art(lib.Poster(it), (int)Math.Round(w * 1.6 / 40) * 40));
+        var g = new Grid();
+        g.Children.Add(new Border
+        {
+            Child = Art(lib.Poster(it), (int)Math.Round(w * 1.6 / 40) * 40),
+            Clip = new RectangleGeometry(new Rect(0.75, 0.75, w - 1.5, h - 1.5), 9.25, 9.25),
+        });
         if (it.Kind is Kind.Movie && it.Watched || it.Kind is Kind.Show && it.UnwatchedCount == 0)
             g.Children.Add(Badge(Icon(IcoCheck, 10, Brushes.White)));
         else if (it.Kind is Kind.Show && it.UnwatchedCount > 0 && it.Episodes.Any(e => e.Watched))
@@ -245,9 +264,11 @@ public static class Ui
     {
         var h = w * 9 / 16;
         var frame = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(12), Background = Placeholder };
-        var g = new Grid { Clip = new RectangleGeometry(new Rect(0, 0, w, h), 12, 12) };
-        g.Children.Add(Art(lib.Still(it), (int)Math.Round(w * 1.5 / 80) * 80));
-        g.Children.Add(new Rectangle
+        var g = new Grid();
+        var pic = new Grid { Clip = new RectangleGeometry(new Rect(0.75, 0.75, w - 1.5, h - 1.5), 11.25, 11.25) };
+        g.Children.Add(pic);
+        pic.Children.Add(Art(lib.Still(it), (int)Math.Round(w * 1.5 / 80) * 80));
+        pic.Children.Add(new Rectangle
         {
             Fill = new LinearGradientBrush(Colors.Transparent, Color.FromArgb(0xB0, 0, 0, 0), 90),
             Height = h * 0.45, VerticalAlignment = VerticalAlignment.Bottom,
