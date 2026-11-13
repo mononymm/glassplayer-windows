@@ -96,7 +96,7 @@ public sealed class MainWindow : Window, IShell
 
     public void Navigate(FrameworkElement page, string key)
     {
-        if (current != null) back.Push((current, currentKey, (current as Page)?.Scroller.VerticalOffset ?? 0));
+        if (current != null) back.Push((current, currentKey, (current as GlassPage)?.Scroller.VerticalOffset ?? 0));
         Show(page, key, animate: true);
     }
 
@@ -107,7 +107,7 @@ public sealed class MainWindow : Window, IShell
         current = page;
         currentKey = key;
         HighlightNav();
-        if (page is Page p && scroll > 0) p.Loaded += (_, _) => p.Scroller.ScrollToVerticalOffset(scroll);
+        if (page is GlassPage p && scroll > 0) p.Loaded += (_, _) => p.Scroller.ScrollToVerticalOffset(scroll);
         if (animate)
         {
             page.Opacity = 0;
@@ -125,7 +125,7 @@ public sealed class MainWindow : Window, IShell
         if (back.Count == 0) return;
         var (page, key, scroll) = back.Pop();
         Show(page, key, animate: true, scroll);
-        if (page is Page p) p.Scroller.ScrollToVerticalOffset(scroll);
+        if (page is GlassPage p) p.Scroller.ScrollToVerticalOffset(scroll);
     }
 
     void GoTo(string key, Func<FrameworkElement> make)
@@ -231,7 +231,7 @@ public sealed class MainWindow : Window, IShell
 
     void RefreshCurrent(string key)
     {
-        double scroll = (current as Page)?.Scroller.VerticalOffset ?? 0;
+        double scroll = (current as GlassPage)?.Scroller.VerticalOffset ?? 0;
         FrameworkElement? page = null;
         if (key == "home") page = new HomePage(this);
         else if (key.StartsWith("item:") && int.TryParse(key[5..], out var id) && Library.ById.TryGetValue(id, out var it)) page = new DetailPage(this, it);
@@ -273,7 +273,7 @@ public sealed class MainWindow : Window, IShell
 
     void ShowSettings()
     {
-        var page = new Page();
+        var page = new GlassPage();
         page.Body.Margin = new Thickness(64, 70, 64, 40);
         page.Body.Children.Add(T("Settings", 34, FontWeights.Bold));
         page.Body.Children.Add(T("Glass finds these on its own; change them if it guessed wrong.", 14, color: Muted).With(t => t.Margin = new Thickness(0, 6, 0, 30)));

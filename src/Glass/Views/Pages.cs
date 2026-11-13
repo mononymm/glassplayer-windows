@@ -22,12 +22,12 @@ public interface IShell
 }
 
 /// <summary>Vertical page with eased scrolling and a slim overlay scrollbar.</summary>
-public class Page : Grid
+public class GlassPage : Grid
 {
     public readonly StackPanel Body = new();
     public readonly ScrollViewer Scroller;
 
-    public Page()
+    public GlassPage()
     {
         Background = Ui.Bg;
         Scroller = new ScrollViewer
@@ -81,7 +81,7 @@ public sealed class Backdrop : Grid
     /// <summary>Crossfades to a new image.</summary>
     public async void Show(string? path)
     {
-        var src = await Art.LoadAsync(path, 1920);
+        var src = await Controls.Art.LoadAsync(path, 1920);
         var (into, outOf) = showingA ? (b, a) : (a, b);
         showingA = !showingA;
         into.Source = src;
@@ -111,7 +111,7 @@ static class TitleArt
     }
 }
 
-public sealed class HomePage : Page
+public sealed class HomePage : GlassPage
 {
     readonly IShell shell;
     readonly Backdrop backdrop = new(720);
@@ -222,7 +222,7 @@ public sealed class HomePage : Page
     }
 }
 
-public sealed class SectionPage : Page
+public sealed class SectionPage : GlassPage
 {
     public SectionPage(IShell shell, Section s, IEnumerable<Item>? items = null, string? title = null)
     {
@@ -238,7 +238,7 @@ public sealed class SectionPage : Page
     }
 }
 
-public sealed class SearchPage : Page
+public sealed class SearchPage : GlassPage
 {
     public SearchPage(IShell shell)
     {
@@ -271,7 +271,7 @@ public sealed class SearchPage : Page
     }
 }
 
-public sealed class DetailPage : Page
+public sealed class DetailPage : GlassPage
 {
     readonly IShell shell;
     readonly Item item;
