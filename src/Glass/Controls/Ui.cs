@@ -240,33 +240,73 @@ public static class Ui
 
         var host = new Grid();
         host.Children.Add(sv);
-        // full-height strips at both edges: click anywhere on them to scroll the row
-        Border Edge(bool left)
+        // full-height strips at both edges: click anywhere on them to scroll the row.
+        // A soft fade that deepens as the mouse gets closer; the chevron glows on hover.
+        LinearGradientBrush Fade(bool left, double strength)
         {
             var c = Ui.BgColor;
-            var fade = new LinearGradientBrush(
-                Color.FromArgb(0xF0, c.R, c.G, c.B), Color.FromArgb(0x00, c.R, c.G, c.B), left ? 0 : 180);
-            var chevron = Icon(left ? IcoChevronL : IcoChevronR, 22, Brushes.White).With(i =>
+            byte A(double x) => (byte)Math.Round(255 * Math.Clamp(x, 0, 1));
+            var br = new LinearGradientBrush
+            {
+                StartPoint = new Point(left ? 0 : 1, 0.5), EndPoint = new Point(left ? 1 : 0, 0.5),
+                GradientStops =
+                {
+                    new GradientStop(Color.FromArgb(A(strength), 0x05, 0x06, 0x08), 0),
+                    new GradientStop(Color.FromArgb(A(strength * 0.72), c.R, c.G, c.B), 0.35),
+                    new GradientStop(Color.FromArgb(A(strength * 0.30), c.R, c.G, c.B), 0.70),
+                    new GradientStop(Color.FromArgb(0, c.R, c.G, c.B), 1),
+                },
+            };
+            br.Freeze();
+            return br;
+        }
+        (Border strip, Rectangle deep) Edge(bool left)
+        {
+            var g = new Grid();
+            g.Children.Add(new Rectangle { Fill = Fade(left, 0.70) });                 // always-on soft fade
+            var deep = new Rectangle { Fill = Fade(left, 1.0), Opacity = 0 };         // deepens with mouse proximity
+            g.Children.Add(deep);
+            var glowFx = new DropShadowEffect { Color = Colors.White, BlurRadius = 16, ShadowDepth = 0, Opacity = 0 };
+            var chevron = Icon(left ? IcoChevronL : IcoChevronR, 24, Brushes.White).With(i =>
             {
                 i.HorizontalAlignment = left ? HorizontalAlignment.Left : HorizontalAlignment.Right;
-                i.Margin = new Thickness(left ? 22 : 0, 0, left ? 0 : 22, 0);
-                i.Opacity = 0.75;
+                i.Margin = new Thickness(left ? 26 : 0, 0, left ? 0 : 26, 0);
+                i.Opacity = 0.7;
+                i.Effect = glowFx;
             });
+            g.Children.Add(chevron);
             var strip = new Border
             {
-                Width = 84, Background = fade, Child = chevron, Cursor = Cursors.Hand,
+                Width = 140, Child = g, Cursor = Cursors.Hand, Background = Brushes.Transparent,
                 HorizontalAlignment = left ? HorizontalAlignment.Left : HorizontalAlignment.Right,
                 Margin = new Thickness(left ? Inset - 24 : 0, 0, 0, 34),   // stop above the titles under the cards
                 Opacity = 0, IsHitTestVisible = false,
             };
-            strip.MouseEnter += (_, _) => chevron.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(120)));
-            strip.MouseLeave += (_, _) => chevron.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.75, TimeSpan.FromMilliseconds(120)));
+            var dur = TimeSpan.FromMilliseconds(140);
+            strip.MouseEnter += (_, _) =>
+            {
+                chevron.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(1, dur));
+                glowFx.BeginAnimation(DropShadowEffect.OpacityProperty, new DoubleAnimation(0.85, dur));
+            };
+            strip.MouseLeave += (_, _) =>
+            {
+                chevron.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0.7, dur));
+                glowFx.BeginAnimation(DropShadowEffect.OpacityProperty, new DoubleAnimation(0, dur));
+            };
             strip.MouseLeftButtonUp += (_, e) => { e.Handled = true; SmoothScroll.ScrollRow(sv, (left ? -1 : 1) * sv.ViewportWidth * 0.8); };
             strip.MouseLeftButtonDown += (_, e) => e.Handled = true;
-            return strip;
+            return (strip, deep);
         }
-        var leftEdge = Edge(true);
-        var rightEdge = Edge(false);
+        var (leftEdge, leftDeep) = Edge(true);
+        var (rightEdge, rightDeep) = Edge(false);
+        // the closer the mouse is to an edge, the darker that edge's fade
+        host.MouseMove += (_, e) =>
+        {
+            var x = e.GetPosition(host).X;
+            var w = host.ActualWidth;
+            leftDeep.Opacity = Math.Clamp(1 - (x - (Inset - 24)) / 320, 0, 1);
+            rightDeep.Opacity = Math.Clamp(1 - (w - x) / 320, 0, 1);
+        };
         host.Children.Add(leftEdge);
         host.Children.Add(rightEdge);
         void Arrows(bool show)
