@@ -30,6 +30,10 @@ jobs:
       - name: Publish
         run: dotnet publish src/Glass/Glass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=${{ env.VERSION }} -o out
 
+      - name: Package the mpv script
+        shell: pwsh
+        run: Compress-Archive -Path mpv\* -DestinationPath Glass-mpv.zip -Force
+
       - name: Release notes
         shell: bash
         run: |
@@ -42,7 +46,7 @@ jobs:
               git log --no-merges --pretty='- %s' -n 15
             fi
             echo
-            echo "Download **Glass.exe** below and run it (no install). Personal project, not made for public use; see the README."
+            echo "Download **Glass.exe** and run it (no install). **Glass-mpv.zip** is the mpv interface on its own (see mpv/README.md). Personal project, not made for public use; see the README."
           } > notes.md
           cat notes.md
 
@@ -64,4 +68,6 @@ jobs:
           name: Glass for Windows ${{ env.VERSION }}
           body_path: notes.md
           make_latest: true
-          files: out/Glass.exe
+          files: |
+            out/Glass.exe
+            Glass-mpv.zip

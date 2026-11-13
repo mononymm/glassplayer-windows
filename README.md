@@ -25,5 +25,8 @@ You need Windows 10 or 11, [mpv](https://mpv.io/installation/) and **Plex Media 
 
 Keys: Ctrl+F search · Esc / Backspace / mouse back button to go back · F5 refresh · Ctrl+wheel tile size
 
+The playback controls come from the Glass mpv script in [`mpv/`](mpv/) (see its README to install it;
+the release also has it as `Glass-mpv.zip`).
+
 Settings live in `%APPDATA%\Glass\settings.json`. Nothing is sent anywhere except to the Plex server
 on your own PC (when it's running) to mark things watched.

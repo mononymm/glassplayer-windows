@@ -1,0 +1,3 @@
+# Suggested input.conf for Glass  (goes in  %APPDATA%\mpv\input.conf)
+LEFT  seek -10
+RIGHT seek 30

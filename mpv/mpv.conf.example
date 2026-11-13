@@ -1,0 +1,23 @@
+# Suggested mpv.conf for Glass  (goes in  %APPDATA%\mpv\mpv.conf)
+
+# Glass draws its own controls and library
+osc=no
+osd-bar=no
+idle=yes
+force-window=yes
+window-dragging=no
+script-opts-append=osc-idlescreen=no
+
+# Quality
+profile=high-quality
+vo=gpu-next
+hwdec=auto-safe
+scale=ewa_lanczossharp
+cscale=ewa_lanczossharp
+dscale=catmull_rom
+deband=yes
+
+# Smooth motion (turn off if playback stutters on your display)
+video-sync=display-resample
+interpolation=yes
+tscale=oversample
