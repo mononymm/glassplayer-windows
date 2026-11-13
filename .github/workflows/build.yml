@@ -3,6 +3,7 @@ name: Build
 on:
   push:
     branches: [main]
+    paths-ignore: ['README.md']
   workflow_dispatch:
 
 permissions:
@@ -15,36 +16,52 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      VERSION: 0.1.${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
       - name: Publish
-        run: dotnet publish src/Glass/Glass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out
+        run: dotnet publish src/Glass/Glass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=${{ env.VERSION }} -o out
 
-      - name: Package
-        shell: pwsh
+      - name: Release notes
+        shell: bash
         run: |
-          Get-ChildItem out
-          Compress-Archive -Path out\Glass.exe -DestinationPath Glass.zip -Force
+          prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          {
+            echo "## Changes"
+            if [ -n "$prev" ]; then
+              git log --no-merges --pretty='- %s' "$prev"..HEAD
+            else
+              git log --no-merges --pretty='- %s' -n 15
+            fi
+            echo
+            echo "Download **Glass.exe** below and run it (no install). Personal project, not made for public use; see the README."
+          } > notes.md
+          cat notes.md
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Glass
+          name: Glass-${{ env.VERSION }}
           path: out/Glass.exe
 
-      - name: Publish "latest" release
+      - name: Remove the old rolling "latest" release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete latest --cleanup-tag -y || true
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Glass for Windows (latest build)
-          prerelease: true
+          tag_name: v${{ env.VERSION }}
+          name: Glass for Windows ${{ env.VERSION }}
+          body_path: notes.md
           make_latest: true
-          files: |
-            out/Glass.exe
-            Glass.zip
-          body: |
-            Built from ${{ github.sha }}. Download Glass.exe and run it — no install needed.
+          files: out/Glass.exe
