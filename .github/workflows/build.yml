@@ -1,0 +1,50 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish
+        run: dotnet publish src/Glass/Glass.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -o out
+
+      - name: Package
+        shell: pwsh
+        run: |
+          Get-ChildItem out
+          Compress-Archive -Path out\Glass.exe -DestinationPath Glass.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Glass
+          path: out/Glass.exe
+
+      - name: Publish "latest" release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Glass for Windows (latest build)
+          prerelease: true
+          make_latest: true
+          files: |
+            out/Glass.exe
+            Glass.zip
+          body: |
+            Built from ${{ github.sha }}. Download Glass.exe and run it — no install needed.
