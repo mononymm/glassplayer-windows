@@ -262,7 +262,8 @@ public sealed class PlexLibrary
         foreach (var g in playable.GroupBy(i => i.Kind == Kind.Episode ? i.Show.Id : -i.Id))
         {
             var last = g.OrderByDescending(i => i.LastViewed).First();
-            if (last.InProgress) { list.Add(last); continue; }
+            // anything started and not finished stays, even if it was rewound to the very start
+            if (!last.Watched) { list.Add(last); continue; }
             if (last.Kind == Kind.Episode && last.Watched)
             {
                 var eps = last.Show.Episodes.Where(e => e.File != null).ToList();
