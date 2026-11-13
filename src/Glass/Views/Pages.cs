@@ -371,7 +371,7 @@ public sealed class DetailPage : GlassPage
     readonly IShell shell;
     readonly Item item;
     readonly StackPanel episodes = new() { Margin = new Thickness(Ui.Inset, 0, 64, 0) };
-    readonly StackPanel seasonTabs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 0, 64, 20) };
+    readonly WrapPanel seasonTabs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 0, 64, 20) };
     readonly StackPanel seasonActions = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, -6, 64, 22) };
     Item? season;
     public Item? CurrentSeason => season;
@@ -409,7 +409,13 @@ public sealed class DetailPage : GlassPage
             }));
 
         var next = item.Kind == Kind.Show ? UpNext() : item;
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 24, 0, 0) };
+        if (next != null && next.InProgress)
+            info.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal, Margin = new Thickness(0, 20, 0, 0),
+                Children = { ProgressBar(next.Progress, 200), T(next.RemainingText, 12, FontWeights.SemiBold, Muted).With(t => t.Margin = new Thickness(12, -4, 0, 0)) }
+            });
+        var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, next != null && next.InProgress ? 12 : 24, 0, 0) };
         if (next != null)
         {
             var label = next.InProgress ? "Resume" : "Play";
@@ -427,12 +433,6 @@ public sealed class DetailPage : GlassPage
             allWatched ? "\uED1A" : "\uE7B3", () => Mark(all, !allWatched)));
         extras.Children.Add(UpscaleButton(item, item.Kind == Kind.Show ? "Show upscaling" : "Upscaling", 32).With(b => b.Margin = new Thickness(8, 0, 0, 0)));
         info.Children.Add(extras);
-        if (next != null && next.InProgress)
-            info.Children.Add(new StackPanel
-            {
-                Orientation = Orientation.Horizontal, Margin = new Thickness(0, 14, 0, 0),
-                Children = { ProgressBar(next.Progress, 200), T(next.RemainingText, 12, FontWeights.SemiBold, Muted).With(t => t.Margin = new Thickness(12, -4, 0, 0)) }
-            });
         hero.Children.Add(info);
         Body.Children.Add(hero);
 
@@ -446,7 +446,7 @@ public sealed class DetailPage : GlassPage
                 var name = s.Title != "" ? s.Title : s.Index == 0 ? "Specials" : $"Season {s.Index}";
                 var tab = Pill(name, null, () => ShowSeason(s), height: 36);
                 tab.Tag = s;
-                tab.Margin = new Thickness(0, 0, 10, 0);
+                tab.Margin = new Thickness(0, 0, 10, 10);
                 seasonTabs.Children.Add(tab);
             }
             Body.Children.Add(seasonActions);
@@ -456,14 +456,15 @@ public sealed class DetailPage : GlassPage
         Body.Margin = new Thickness(0, 0, 0, 60);
     }
 
-    /// <summary>Compact pill for secondary actions.</summary>
+    /// <summary>Secondary action: a small outlined, squarer button (unlike the round play/season pills).</summary>
     static Button SmallPill(string label, string glyph, Action click)
     {
         var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
-        sp.Children.Add(new TextBlock { Text = glyph, FontFamily = Ui.Icons, FontSize = 12, Margin = new Thickness(0, 1, 7, 0), Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
-        sp.Children.Add(new TextBlock { Text = label, FontFamily = Ui.Font, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
-        var b = Chrome(sp, Ui.GlassFill, Ui.GlassHover, new CornerRadius(16), new Thickness(14, 0, 14, 0));
-        b.Height = 32;
+        sp.Children.Add(new TextBlock { Text = glyph, FontFamily = Ui.Icons, FontSize = 12, Margin = new Thickness(0, 1, 7, 0), Foreground = Ui.Muted, VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = label, FontFamily = Ui.Font, FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = Ui.Text, VerticalAlignment = VerticalAlignment.Center });
+        var b = Chrome(sp, Brushes.Transparent, Ui.GlassFill, new CornerRadius(7), new Thickness(11, 0, 12, 0));
+        b.Height = 30;
+        b.BorderThickness = new Thickness(1);
         b.Click += (_, _) => click();
         return b;
     }
