@@ -415,14 +415,18 @@ public sealed class DetailPage : GlassPage
             var label = next.InProgress ? "Resume" : "Play";
             if (next.Kind == Kind.Episode) label += "  " + next.Code.Replace(" · ", " ");
             buttons.Children.Add(Pill(label, IcoPlay, () => shell.Play(next), accent: true, height: 44));
+            buttons.Children.Add(Pill("Play from start", "\uE72C", () => shell.Play(next, fromStart: true), height: 44)
+                .With(b => b.Margin = new Thickness(10, 0, 0, 0)));
         }
-        // mark the whole show / movie, and its upscaling
+        info.Children.Add(buttons);
+        // smaller row under Play: mark the whole show / movie, and its upscaling
         var all = item.Kind == Kind.Show ? item.Episodes.Where(e => e.File != null).ToList() : new List<Item> { item };
         var allWatched = all.Count > 0 && all.All(e => e.Watched);
-        buttons.Children.Add(Pill(allWatched ? "Mark unwatched" : "Mark watched", allWatched ? "\uED1A" : "\uE7B3",
-            () => Mark(all, !allWatched), height: 44).With(b => b.Margin = new Thickness(12, 0, 0, 0)));
-        buttons.Children.Add(UpscaleButton(item, item.Kind == Kind.Show ? "Show upscaling" : "Upscaling", 44).With(b => b.Margin = new Thickness(12, 0, 0, 0)));
-        info.Children.Add(buttons);
+        var extras = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 12, 0, 0) };
+        extras.Children.Add(SmallPill(allWatched ? (item.Kind == Kind.Show ? "Mark show unwatched" : "Mark unwatched") : (item.Kind == Kind.Show ? "Mark show watched" : "Mark watched"),
+            allWatched ? "\uED1A" : "\uE7B3", () => Mark(all, !allWatched)));
+        extras.Children.Add(UpscaleButton(item, item.Kind == Kind.Show ? "Show upscaling" : "Upscaling", 32).With(b => b.Margin = new Thickness(8, 0, 0, 0)));
+        info.Children.Add(extras);
         if (next != null && next.InProgress)
             info.Children.Add(new StackPanel
             {
@@ -452,6 +456,18 @@ public sealed class DetailPage : GlassPage
         Body.Margin = new Thickness(0, 0, 0, 60);
     }
 
+    /// <summary>Compact pill for secondary actions.</summary>
+    static Button SmallPill(string label, string glyph, Action click)
+    {
+        var sp = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+        sp.Children.Add(new TextBlock { Text = glyph, FontFamily = Ui.Icons, FontSize = 12, Margin = new Thickness(0, 1, 7, 0), Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
+        sp.Children.Add(new TextBlock { Text = label, FontFamily = Ui.Font, FontSize = 12.5, FontWeight = FontWeights.SemiBold, Foreground = Brushes.White, VerticalAlignment = VerticalAlignment.Center });
+        var b = Chrome(sp, Ui.GlassFill, Ui.GlassHover, new CornerRadius(16), new Thickness(14, 0, 14, 0));
+        b.Height = 32;
+        b.Click += (_, _) => click();
+        return b;
+    }
+
     async void Mark(List<Item> items, bool watched)
     {
         await WatchState.SetAsync(shell.Settings, items, watched);
@@ -464,7 +480,7 @@ public sealed class DetailPage : GlassPage
         var folders = ShaderRules.FoldersOf(target);
         var cur = folders.Count > 0 ? ShaderRules.Get(shell.Settings, folders) : "";
         Button b = null!;
-        b = Pill($"{what}: {ShaderRules.Label(cur)}", "\uE8B9", () =>
+        Action open = () =>
         {
             var menu = Ui.Menu();
             menu.PlacementTarget = b;
@@ -472,7 +488,8 @@ public sealed class DetailPage : GlassPage
             FillMenu(menu, ShaderRules.Modes.Select(m => ((string, string, Action)?)(
                 m.label, m.mode == cur ? IcoCheck : "\uE8B9", () => { ShaderRules.Set(shell.Settings, folders, m.mode); shell.RefreshPage(); })));
             menu.IsOpen = true;
-        }, height: height);
+        };
+        b = height <= 34 ? SmallPill($"{what}: {ShaderRules.Label(cur)}", "\uE8B9", open) : Pill($"{what}: {ShaderRules.Label(cur)}", "\uE8B9", open, height: height);
         if (folders.Count == 0) { b.IsEnabled = false; b.Opacity = 0.5; }
         b.ToolTip = "Which upscaling shaders mpv uses (needs the shader files). Automatic follows the library, then folder names.";
         return b;
@@ -500,9 +517,9 @@ public sealed class DetailPage : GlassPage
         seasonActions.Children.Clear();
         var eps = s.Children.Where(e => e.File != null).ToList();
         var seasonWatched = eps.Count > 0 && eps.All(e => e.Watched);
-        seasonActions.Children.Add(Pill(seasonWatched ? "Mark season unwatched" : "Mark season watched", seasonWatched ? "\uED1A" : "\uE7B3",
-            () => Mark(eps, !seasonWatched), height: 34));
-        seasonActions.Children.Add(UpscaleButton(s, "Season upscaling", 34).With(b => b.Margin = new Thickness(10, 0, 0, 0)));
+        seasonActions.Children.Add(SmallPill(seasonWatched ? "Mark season unwatched" : "Mark season watched", seasonWatched ? "\uED1A" : "\uE7B3",
+            () => Mark(eps, !seasonWatched)));
+        seasonActions.Children.Add(UpscaleButton(s, "Season upscaling", 32).With(b => b.Margin = new Thickness(8, 0, 0, 0)));
 
         episodes.Children.Clear();
         var lib = shell.Library;
