@@ -46,6 +46,8 @@ jobs:
               git log --no-merges --pretty='- %s' -n 15
             fi
             echo
+            echo "> **Heads-up:** the first time you play something (or after switching upscaling or updating your graphics driver), playback can freeze for a few seconds up to about half a minute while mpv builds its shaders for your GPU. It only happens once; after that they're cached."
+            echo
             echo "Download **Glass.exe** and run it (no install). **Glass-mpv.zip** is the mpv interface on its own (see mpv/README.md). Personal project, not made for public use; see the README."
           } > notes.md
           cat notes.md

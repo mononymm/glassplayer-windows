@@ -7,6 +7,11 @@ The playback interface used by Glass for Windows, as a standalone mpv script: fl
 a library page when no video is open, Plex titles/posters/resume points, an upscaling switch, and an
 optional sync that sends your progress back to Plex.
 
+> **First playback may freeze briefly.** The first time you play something (and the first time after
+> switching upscaling modes or updating your graphics driver), mpv compiles its shaders for your GPU.
+> The picture can freeze for a few seconds to around half a minute while it does. This only happens
+> once; after that the shaders are cached and playback starts normally.
+
 ## Install
 
 1. Install [mpv for Windows](https://mpv.io/installation/) (the shinchiro builds work well).

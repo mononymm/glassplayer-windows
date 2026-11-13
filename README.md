@@ -13,6 +13,11 @@ scripts and Plex sync, in a borderless mpv window that follows the app.
 - Sort libraries; rename, reorder and hide them; adjust the tile size
 - Reads Plex's database and artwork directly (a private copy), so it also works while Plex is off
 
+> **First playback may freeze briefly.** The first time you play something (and the first time after
+> switching upscaling modes or updating your graphics driver), mpv compiles its shaders for your GPU.
+> The picture can freeze for a few seconds to around half a minute while it does. This only happens
+> once; after that the shaders are cached and playback starts normally.
+
 ## Quick start (if you want to try it anyway)
 
 You need Windows 10 or 11, [mpv](https://mpv.io/installation/) and **Plex Media Server on the same PC**
