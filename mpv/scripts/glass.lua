@@ -617,16 +617,6 @@ local function render_controls(now, dt, a, cw)
         end
     end
 
-    -- top right: clock and when this will end
-    do
-        local now_s = os.time()
-        local left = (P.duration or 0) - (mp.get_property_number("time-pos", 0) or 0)
-        local speed = mp.get_property_number("speed", 1) or 1
-        local clock = os.date("%I:%M %p", now_s):gsub("^0", "")
-        if left > 0 then clock = clock .. "  ·  ends " .. os.date("%I:%M", now_s + math.floor(left / speed)):gsub("^0", "") end
-        I.shadow_text(cw - 24 * S, 22 * S - lift * 0.6, 6, 12.5 * S, opts.text, 0.78 * a, clock, 600)
-    end
-
     -- floating control panel
     local px1, px2 = 16 * S, cw - 16 * S
     local py1, py2 = H - 104 * S + lift, H - 16 * S + lift
@@ -636,14 +626,14 @@ local function render_controls(now, dt, a, cw)
     -- seek bar
     local dur = P.duration
     local pos = mp.get_property_number("time-pos", 0) or 0
+    -- "current / total" as one line of text (one colour change), so the spacing is always right
     local tpos_s = fmt_time(pos)
-    local trem_s = dur and ("−" .. fmt_time(math.max(0, dur - pos))) or "--:--"
-    local tw_pos = text_width(tpos_s, 12.5 * S, 600)
-    local tw_rem = text_width(trem_s, 12.5 * S, 500)
+    local ttot_s = "  /  " .. (dur and fmt_time(dur) or "--:--")
+    local tw_all = text_width(tpos_s .. ttot_s, 12.5 * S, 600)
     local sy = py1 + 25 * S
-    local sx1, sx2 = px1 + 22 * S + tw_pos + 14 * S, px2 - 22 * S - tw_rem - 14 * S
-    text(px1 + 22 * S, sy, 4, 12.5 * S, col(opts.text, 0.95 * a), tpos_s, 600)
-    text(px2 - 22 * S, sy, 6, 12.5 * S, col(opts.muted, a), trem_s, 500)
+    local sx1, sx2 = px1 + 22 * S + tw_all + 16 * S, px2 - 22 * S
+    out[#out + 1] = string.format("{\\an4\\pos(%s,%s)\\fn%s\\fs%s\\b600\\bord0\\shad0\\blur0%s}%s{\\b500%s}%s",
+        f(px1 + 22 * S), f(sy), opts.font, f(12.5 * S), col(opts.text, 0.95 * a), esc(tpos_s), col(opts.muted, a), esc(ttot_s))
     seek_geom.x1, seek_geom.x2 = sx1, sx2
     local seek_over = inside(sx1 - 8 * S, sy - 14 * S, sx2 + 8 * S, sy + 14 * S)
     anim.seek = step(anim.seek, (seek_over or dragging == "seek") and 1 or 0, dt, 120)
@@ -812,6 +802,15 @@ local function render_controls(now, dt, a, cw)
         if title ~= "" then I.shadow_text(tx, ty1, 1, 22 * S, opts.text, a, title, 700, tclip) end
         if subtitle then I.shadow_text(tx, ty2, 1, 13.5 * S, opts.text, 0.85 * a, subtitle, 500, tclip) end
         if info ~= "" then I.shadow_text(px2 - 10 * S, ty2, 3, 12 * S, opts.text, 0.72 * a, info, 600) end
+        -- current time and when this ends, above the format info (accounts for playback speed)
+        do
+            local now_s = os.time()
+            local left = (dur or 0) - pos
+            local speed = mp.get_property_number("speed", 1) or 1
+            local clock = os.date("%I:%M %p", now_s):gsub("^0", "")
+            if left > 0 then clock = clock .. "  ·  ends " .. os.date("%I:%M %p", now_s + math.floor(left / speed)):gsub("^0", "") end
+            I.shadow_text(px2 - 10 * S, ty2 - (info ~= "" and 18 or 0) * S, 3, 12.5 * S, opts.text, 0.88 * a, clock, 600)
+        end
     end
 
     local x = px2 - 36 * S
