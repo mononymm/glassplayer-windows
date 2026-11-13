@@ -11,6 +11,8 @@ namespace Glass.Data;
 /// </summary>
 public static class ShaderRules
 {
+    public static string Label(string mode) => Modes.FirstOrDefault(m => m.mode == mode).label ?? "Automatic";
+
     public static readonly (string mode, string label)[] Modes =
         { ("", "Automatic"), ("live", "Live Action"), ("anime", "2D Animation"), ("off", "Disabled") };
 
@@ -59,10 +61,10 @@ public static class ShaderRules
         File.WriteAllText(FilePath(s), root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }), new UTF8Encoding(false));
     }
 
-    /// <summary>Folders that hold a show (common folder of its episodes) or a movie (its folder).</summary>
+    /// <summary>Folders that hold a show (common folder of its episodes), a season, or a movie (its folder).</summary>
     public static List<string> FoldersOf(Item it)
     {
-        var files = (it.Kind == Kind.Show ? it.Episodes : new[] { it }).Select(e => e.File).Where(f => !string.IsNullOrEmpty(f)).Select(f => f!).ToList();
+        var files = (it.Kind is Kind.Show or Kind.Season ? it.Episodes : new[] { it }).Select(e => e.File).Where(f => !string.IsNullOrEmpty(f)).Select(f => f!).ToList();
         if (files.Count == 0) return new();
         if (it.Kind == Kind.Movie) return new() { Path.GetDirectoryName(files[0]) ?? "" };
         var parts = files.Select(f => (Path.GetDirectoryName(f) ?? "").Split('\\', '/')).ToList();
@@ -76,7 +78,7 @@ public static class ShaderRules
         var dir = string.Join("\\", common);
         // a show whose episodes sit in "Season NN" folders: the show folder is one up
         var leaf = Path.GetFileName(dir);
-        if (files.Count > 0 && leaf.StartsWith("Season", StringComparison.OrdinalIgnoreCase)) dir = Path.GetDirectoryName(dir) ?? dir;
+        if (it.Kind == Kind.Show && leaf.StartsWith("Season", StringComparison.OrdinalIgnoreCase)) dir = Path.GetDirectoryName(dir) ?? dir;
         return dir.Length > 3 ? new() { dir } : new();
     }
 }

@@ -372,7 +372,9 @@ public sealed class DetailPage : GlassPage
     readonly Item item;
     readonly StackPanel episodes = new() { Margin = new Thickness(Ui.Inset, 0, 64, 0) };
     readonly StackPanel seasonTabs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 0, 64, 20) };
+    readonly StackPanel seasonActions = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, -6, 64, 22) };
     Item? season;
+    public Item? CurrentSeason => season;
 
     public DetailPage(IShell shell, Item it, Item? focusSeason = null)
     {
@@ -414,6 +416,12 @@ public sealed class DetailPage : GlassPage
             if (next.Kind == Kind.Episode) label += "  " + next.Code.Replace(" · ", " ");
             buttons.Children.Add(Pill(label, IcoPlay, () => shell.Play(next), accent: true, height: 44));
         }
+        // mark the whole show / movie, and its upscaling
+        var all = item.Kind == Kind.Show ? item.Episodes.Where(e => e.File != null).ToList() : new List<Item> { item };
+        var allWatched = all.Count > 0 && all.All(e => e.Watched);
+        buttons.Children.Add(Pill(allWatched ? "Mark unwatched" : "Mark watched", allWatched ? "\uED1A" : "\uE7B3",
+            () => Mark(all, !allWatched), height: 44).With(b => b.Margin = new Thickness(12, 0, 0, 0)));
+        buttons.Children.Add(UpscaleButton(item, item.Kind == Kind.Show ? "Show upscaling" : "Upscaling", 44).With(b => b.Margin = new Thickness(12, 0, 0, 0)));
         info.Children.Add(buttons);
         if (next != null && next.InProgress)
             info.Children.Add(new StackPanel
@@ -437,10 +445,37 @@ public sealed class DetailPage : GlassPage
                 tab.Margin = new Thickness(0, 0, 10, 0);
                 seasonTabs.Children.Add(tab);
             }
+            Body.Children.Add(seasonActions);
             Body.Children.Add(episodes);
             if (start != null) ShowSeason(start);
         }
         Body.Margin = new Thickness(0, 0, 0, 60);
+    }
+
+    async void Mark(List<Item> items, bool watched)
+    {
+        await WatchState.SetAsync(shell.Settings, items, watched);
+        shell.RefreshPage();
+    }
+
+    /// <summary>"Upscaling: Live Action ▾" button that opens a menu of modes for a show, season or movie.</summary>
+    Button UpscaleButton(Item target, string what, double height)
+    {
+        var folders = ShaderRules.FoldersOf(target);
+        var cur = folders.Count > 0 ? ShaderRules.Get(shell.Settings, folders) : "";
+        Button b = null!;
+        b = Pill($"{what}: {ShaderRules.Label(cur)}", "\uE8B9", () =>
+        {
+            var menu = Ui.Menu();
+            menu.PlacementTarget = b;
+            menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            FillMenu(menu, ShaderRules.Modes.Select(m => ((string, string, Action)?)(
+                m.label, m.mode == cur ? IcoCheck : "\uE8B9", () => { ShaderRules.Set(shell.Settings, folders, m.mode); shell.RefreshPage(); })));
+            menu.IsOpen = true;
+        }, height: height);
+        if (folders.Count == 0) { b.IsEnabled = false; b.Opacity = 0.5; }
+        b.ToolTip = "Which upscaling shaders mpv uses (needs the shader files). Automatic follows the library, then folder names.";
+        return b;
     }
 
     Item? UpNext()
@@ -461,6 +496,14 @@ public sealed class DetailPage : GlassPage
             var on = b.Tag == s;
             b.Template = Chrome(new TextBlock(), on ? Ui.Accent : Ui.GlassFill, on ? Ui.Accent : Ui.GlassHover, new CornerRadius(18), new Thickness(18, 0, 18, 0)).Template;
         }
+        // season actions: mark the season, upscaling for just this season
+        seasonActions.Children.Clear();
+        var eps = s.Children.Where(e => e.File != null).ToList();
+        var seasonWatched = eps.Count > 0 && eps.All(e => e.Watched);
+        seasonActions.Children.Add(Pill(seasonWatched ? "Mark season unwatched" : "Mark season watched", seasonWatched ? "\uED1A" : "\uE7B3",
+            () => Mark(eps, !seasonWatched), height: 34));
+        seasonActions.Children.Add(UpscaleButton(s, "Season upscaling", 34).With(b => b.Margin = new Thickness(10, 0, 0, 0)));
+
         episodes.Children.Clear();
         var lib = shell.Library;
         foreach (var ep in s.Children.Where(e => e.File != null).OrderBy(e => e.Index))

@@ -400,7 +400,13 @@ public sealed class MainWindow : Window, IShell
         double scroll = (current as GlassPage)?.Scroller.VerticalOffset ?? 0;
         FrameworkElement? page = null;
         if (key == "home") page = new HomePage(this);
-        else if (key.StartsWith("item:") && int.TryParse(key[5..], out var id) && Library.ById.TryGetValue(id, out var it)) page = new DetailPage(this, it);
+        else if (key.StartsWith("item:") && int.TryParse(key[5..], out var id) && Library.ById.TryGetValue(id, out var it))
+        {
+            // same season as before (looked up again, since the library may have been reloaded)
+            var seasonId = (current as DetailPage)?.CurrentSeason?.Id;
+            Item? season = seasonId is int sid2 && Library.ById.TryGetValue(sid2, out var se) ? se : null;
+            page = new DetailPage(this, it, season);
+        }
         else if (key.StartsWith("section:") && int.TryParse(key[8..], out var sid) && Sections.FirstOrDefault(s => s.Id == sid) is { } sec) page = new SectionPage(this, sec);
         if (page == null) return;
         // older pages in the back stack keep old progress; that's fine for v1
