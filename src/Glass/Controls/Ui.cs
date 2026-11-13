@@ -101,26 +101,30 @@ public static class Ui
         return new Button { Template = tpl, Content = content, Cursor = Cursors.Hand, Focusable = false };
     }
 
-    /// <summary>Gentle grow + glow on hover for cards.</summary>
+    /// <summary>Grow + red glow + thin red rim on hover for cards.</summary>
     public static void Hoverable(FrameworkElement el, Border frame)
     {
         var st = new ScaleTransform(1, 1);
         el.RenderTransform = st;
         el.RenderTransformOrigin = new Point(0.5, 0.5);
         el.Cursor = Cursors.Hand;
-        var glow = new DropShadowEffect { Color = AccentColor, BlurRadius = 0, ShadowDepth = 0, Opacity = 0.0 };
+        var glow = new DropShadowEffect { Color = Color.FromRgb(0xFF, 0x3B, 0x36), BlurRadius = 0, ShadowDepth = 0, Opacity = 0 };
         frame.Effect = glow;
-        var dur = TimeSpan.FromMilliseconds(160);
+        var rim = new SolidColorBrush(Color.FromRgb(0xFF, 0x5A, 0x55)) { Opacity = 0 };
+        frame.BorderBrush = rim;
+        frame.BorderThickness = new Thickness(1.5);
+        var dur = TimeSpan.FromMilliseconds(170);
         var ease = new QuadraticEase { EasingMode = EasingMode.EaseOut };
-        void To(double s, double o, double blur)
+        void To(double s, double o, double blur, double r)
         {
             st.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(s, dur) { EasingFunction = ease });
             st.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(s, dur) { EasingFunction = ease });
             glow.BeginAnimation(DropShadowEffect.OpacityProperty, new DoubleAnimation(o, dur));
             glow.BeginAnimation(DropShadowEffect.BlurRadiusProperty, new DoubleAnimation(blur, dur));
+            rim.BeginAnimation(SolidColorBrush.OpacityProperty, new DoubleAnimation(r, dur));
         }
-        el.MouseEnter += (_, _) => { Panel.SetZIndex(el, 1); To(1.045, 0.55, 22); };
-        el.MouseLeave += (_, _) => { Panel.SetZIndex(el, 0); To(1, 0, 0); };
+        el.MouseEnter += (_, _) => { Panel.SetZIndex(el, 1); To(1.045, 0.95, 34, 0.9); };
+        el.MouseLeave += (_, _) => { Panel.SetZIndex(el, 0); To(1, 0, 0, 0); };
     }
 
     public static UIElement ProgressBar(double value, double width)
@@ -144,7 +148,7 @@ public static class Ui
     public static FrameworkElement PosterCard(PlexLibrary lib, Item it, double w, Action onClick)
     {
         var h = w * 1.5;
-        var frame = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(10), Background = Placeholder, ClipToBounds = true };
+        var frame = new Border { Width = w, Height = h, CornerRadius = new CornerRadius(10), Background = Placeholder };
         var g = new Grid();
         var img = Art(lib.Poster(it), (int)(w * 1.6));
         g.Children.Add(new Border { CornerRadius = new CornerRadius(10), Child = img, Clip = new RectangleGeometry(new Rect(0, 0, w, h), 10, 10) });
@@ -215,8 +219,8 @@ public static class Ui
     /// <summary>A titled horizontal row with arrow buttons that appear on hover.</summary>
     public static FrameworkElement Row(string title, IEnumerable<FrameworkElement> cards, Action? seeAll = null, double gap = 18)
     {
-        var outer = new StackPanel { Margin = new Thickness(0, 0, 0, 34) };
-        var head = new DockPanel { Margin = new Thickness(Ui.Inset, 0, 64, 12), LastChildFill = false };
+        var outer = new StackPanel { Margin = new Thickness(0, 0, 0, 18) };
+        var head = new DockPanel { Margin = new Thickness(Ui.Inset, 0, 64, -6), LastChildFill = false };
         var titleText = T(title, 20, FontWeights.Bold);
         head.Children.Add(titleText);
         if (seeAll != null)
@@ -234,7 +238,7 @@ public static class Ui
         }
         outer.Children.Add(head);
 
-        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 6, 64, 10) };
+        var panel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 22, 64, 22) };
         foreach (var c in cards) { c.Margin = new Thickness(0, 0, gap, 0); panel.Children.Add(c); }
         var sv = new ScrollViewer
         {
@@ -284,7 +288,7 @@ public static class Ui
             {
                 Width = 140, Child = g, Cursor = Cursors.Hand, Background = Brushes.Transparent,
                 HorizontalAlignment = left ? HorizontalAlignment.Left : HorizontalAlignment.Right,
-                Margin = new Thickness(left ? Inset - 24 : 0, 0, 0, 34),   // stop above the titles under the cards
+                Margin = new Thickness(left ? Inset - 24 : 0, 22, 0, 62),   // cover the cards, not the titles under them
                 Opacity = 0, IsHitTestVisible = false,
             };
             var dur = TimeSpan.FromMilliseconds(140);
