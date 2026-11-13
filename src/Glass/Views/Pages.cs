@@ -504,7 +504,7 @@ public sealed class DetailPage : GlassPage
         row.MouseEnter += (_, _) => { row.Background = Ui.GlassFill; play.BeginAnimation(OpacityProperty, new DoubleAnimation(1, dur)); };
         row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; play.BeginAnimation(OpacityProperty, new DoubleAnimation(0, dur)); };
         row.MouseLeftButtonUp += (_, _) => shell.Play(ep);
-        if (Ui.MenuFor != null) RightClick(row, () => Ui.MenuFor(ep));
+        if (Ui.MenuFor != null) RightClick(row, () => Ui.MenuFor(ep), ep);
         return row;
     }
 }

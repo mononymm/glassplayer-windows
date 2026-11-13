@@ -164,7 +164,7 @@ public static class Ui
         sp.Cursor = Cursors.Hand;
         sp.MouseLeftButtonUp += (_, e) => { e.Handled = true; onClick(); };
         sp.ToolTip = null;
-        if (MenuFor != null) RightClick(sp, () => MenuFor(it));
+        if (MenuFor != null) RightClick(sp, () => MenuFor(it), it);
         return sp;
     }
 
@@ -208,7 +208,7 @@ public static class Ui
         frame.MouseLeave += (_, _) => play.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(150)));
         sp.Cursor = Cursors.Hand;
         sp.MouseLeftButtonUp += (_, e) => { e.Handled = true; onClick(); };
-        if (MenuFor != null) RightClick(sp, () => MenuFor(it));
+        if (MenuFor != null) RightClick(sp, () => MenuFor(it), it);
         return sp;
     }
 
@@ -333,27 +333,55 @@ public static class Ui
 
     // ---------------------------------------------------------------- right-click menus
 
-    /// <summary>A dark rounded menu. Entries: (label, glyph, action); null = separator.</summary>
-    public static ContextMenu Menu() => new()
+    /// <summary>A dark rounded glass menu. Entries: (label, glyph, action); null = separator.</summary>
+    public static ContextMenu Menu()
     {
-        Template = MenuTemplate(), Placement = PlacementMode.MousePoint, HasDropShadow = false,
-    };
+        var m = new ContextMenu
+        {
+            Template = MenuTemplate(), Placement = PlacementMode.MousePoint, HasDropShadow = false,
+            Background = Brushes.Transparent, BorderThickness = new Thickness(0), Padding = new Thickness(0),
+        };
+        // Windows wraps every entry in its own light-themed menu row; replace that row with a bare presenter
+        var row = new ControlTemplate(typeof(MenuItem));
+        var cp = new FrameworkElementFactory(typeof(ContentPresenter));
+        cp.SetValue(ContentPresenter.ContentSourceProperty, "Header");
+        row.VisualTree = cp;
+        var style = new Style(typeof(MenuItem));
+        style.Setters.Add(new Setter(Control.TemplateProperty, row));
+        style.Setters.Add(new Setter(UIElement.FocusableProperty, false));
+        m.ItemContainerStyle = style;
+        return m;
+    }
 
-    public static void FillMenu(ContextMenu menu, IEnumerable<(string label, string glyph, Action click)?> entries)
+    public static void FillMenu(ContextMenu menu, IEnumerable<(string label, string glyph, Action click)?> entries, string? title = null, string? subtitle = null)
     {
         menu.Items.Clear();
+        if (title != null)
+        {
+            var head = new StackPanel { Margin = new Thickness(12, 8, 12, 8), MaxWidth = 260 };
+            head.Children.Add(T(title, 13.5, FontWeights.Bold));
+            if (!string.IsNullOrEmpty(subtitle)) head.Children.Add(T(subtitle, 12, color: Muted).With(t => t.Margin = new Thickness(0, 2, 0, 0)));
+            menu.Items.Add(head);
+            menu.Items.Add(new Border { Height = 1, Background = GlassEdge, Margin = new Thickness(6, 2, 6, 4) });
+        }
         foreach (var e in entries)
         {
-            if (e is not { } en) { menu.Items.Add(new Border { Height = 1, Background = GlassEdge, Margin = new Thickness(10, 5, 10, 5) }); continue; }
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(Icon(en.glyph, 13, Muted).With(i => { i.Width = 22; i.Margin = new Thickness(0, 1, 8, 0); }));
-            row.Children.Add(T(en.label, 13.5, FontWeights.SemiBold));
-            var b = Chrome(row, Brushes.Transparent, GlassFill, new CornerRadius(9), new Thickness(10, 7, 18, 7), stretch: true);
-            b.BorderThickness = new Thickness(0);
-            b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            if (e is not { } en) { menu.Items.Add(new Border { Height = 1, Background = GlassEdge, Margin = new Thickness(6, 4, 6, 4) }); continue; }
+            var icon = Icon(en.glyph, 14, Muted).With(i => { i.Width = 20; i.TextAlignment = TextAlignment.Center; });
+            var label = T(en.label, 13.5, FontWeights.SemiBold).With(t => t.Margin = new Thickness(12, 0, 0, 0));
+            var row = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
+            row.Children.Add(icon);
+            row.Children.Add(label);
+            var item = new Border
+            {
+                Child = row, CornerRadius = new CornerRadius(10), Padding = new Thickness(10, 8, 22, 8),
+                Background = Brushes.Transparent, Cursor = Cursors.Hand, Margin = new Thickness(0, 1, 0, 1),
+            };
+            item.MouseEnter += (_, _) => { item.Background = new SolidColorBrush(Color.FromArgb(0x2E, AccentColor.R, AccentColor.G, AccentColor.B)); icon.Foreground = Accent; };
+            item.MouseLeave += (_, _) => { item.Background = Brushes.Transparent; icon.Foreground = Muted; };
             var act = en.click;
-            b.Click += (_, _) => { menu.IsOpen = false; act(); };
-            menu.Items.Add(b);
+            item.MouseLeftButtonUp += (_, ev) => { ev.Handled = true; menu.IsOpen = false; act(); };
+            menu.Items.Add(item);
         }
     }
 
@@ -363,12 +391,14 @@ public static class Ui
         if (menuTpl != null) return menuTpl;
         var tpl = new ControlTemplate(typeof(ContextMenu));
         var bd = new FrameworkElementFactory(typeof(Border));
-        bd.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x1A, 0x1C, 0x22)));
+        bd.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromArgb(0xF5, 0x17, 0x19, 0x1F)));
         bd.SetValue(Border.BorderBrushProperty, GlassEdge);
         bd.SetValue(Border.BorderThicknessProperty, new Thickness(1));
-        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(14));
+        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(16));
         bd.SetValue(Border.PaddingProperty, new Thickness(6));
-        bd.SetValue(FrameworkElement.MinWidthProperty, 210.0);
+        bd.SetValue(FrameworkElement.MinWidthProperty, 230.0);
+        bd.SetValue(FrameworkElement.MarginProperty, new Thickness(14));      // room for the shadow
+        bd.SetValue(UIElement.EffectProperty, new DropShadowEffect { BlurRadius = 28, ShadowDepth = 6, Opacity = 0.55, Color = Colors.Black });
         var ip = new FrameworkElementFactory(typeof(StackPanel));
         ip.SetValue(Panel.IsItemsHostProperty, true);
         bd.AppendChild(ip);
@@ -378,10 +408,11 @@ public static class Ui
     }
 
     /// <summary>Gives an element a right-click menu whose entries are built when it opens (so they reflect current state).</summary>
-    public static void RightClick(FrameworkElement el, Func<IEnumerable<(string, string, Action)?>> entries)
+    public static void RightClick(FrameworkElement el, Func<IEnumerable<(string, string, Action)?>> entries, Item? about = null)
     {
         var menu = Menu();
         el.ContextMenu = menu;
-        el.ContextMenuOpening += (_, _) => FillMenu(menu, entries());
+        el.ContextMenuOpening += (_, _) => FillMenu(menu, entries(), about?.DisplayTitle,
+            about == null ? null : about.Kind == Kind.Episode ? $"{about.Code} · {about.Title}" : about.SubLine);
     }
 }
