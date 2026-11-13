@@ -91,16 +91,18 @@ public sealed class MpvPlayer
         if (hwnd != IntPtr.Zero) SetForegroundWindow(hwnd);
     }
 
+    /// <summary>Asks mpv to quit (so the Glass script saves the position), then forces it if it hangs.</summary>
     public void Stop()
     {
         var p = proc;
         proc = null;
         hwnd = IntPtr.Zero;
-        CloseIpc();
         if (p is { HasExited: false })
         {
-            try { p.Kill(); } catch { }
+            Command("quit");
+            try { if (!p.WaitForExit(2000)) p.Kill(); } catch { }
         }
+        CloseIpc();
     }
 
     public void Command(params object[] args)
