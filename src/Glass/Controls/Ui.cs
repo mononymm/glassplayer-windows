@@ -138,6 +138,9 @@ public static class Ui
     };
 
     /// <summary>Portrait poster card (shows, movies, seasons).</summary>
+    /// <summary>Set by the window: builds the right-click entries for an item.</summary>
+    public static Func<Item, IEnumerable<(string, string, Action)?>>? MenuFor;
+
     public static FrameworkElement PosterCard(PlexLibrary lib, Item it, double w, Action onClick)
     {
         var h = w * 1.5;
@@ -161,6 +164,7 @@ public static class Ui
         sp.Cursor = Cursors.Hand;
         sp.MouseLeftButtonUp += (_, e) => { e.Handled = true; onClick(); };
         sp.ToolTip = null;
+        if (MenuFor != null) RightClick(sp, () => MenuFor(it));
         return sp;
     }
 
@@ -204,6 +208,7 @@ public static class Ui
         frame.MouseLeave += (_, _) => play.BeginAnimation(UIElement.OpacityProperty, new DoubleAnimation(0, TimeSpan.FromMilliseconds(150)));
         sp.Cursor = Cursors.Hand;
         sp.MouseLeftButtonUp += (_, e) => { e.Handled = true; onClick(); };
+        if (MenuFor != null) RightClick(sp, () => MenuFor(it));
         return sp;
     }
 
@@ -325,4 +330,58 @@ public static class Ui
     }
 
     public static T With<T>(this T el, Action<T> set) { set(el); return el; }
+
+    // ---------------------------------------------------------------- right-click menus
+
+    /// <summary>A dark rounded menu. Entries: (label, glyph, action); null = separator.</summary>
+    public static ContextMenu Menu() => new()
+    {
+        Template = MenuTemplate(), Placement = PlacementMode.MousePoint, HasDropShadow = false,
+    };
+
+    public static void FillMenu(ContextMenu menu, IEnumerable<(string label, string glyph, Action click)?> entries)
+    {
+        menu.Items.Clear();
+        foreach (var e in entries)
+        {
+            if (e is not { } en) { menu.Items.Add(new Border { Height = 1, Background = GlassEdge, Margin = new Thickness(10, 5, 10, 5) }); continue; }
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(Icon(en.glyph, 13, Muted).With(i => { i.Width = 22; i.Margin = new Thickness(0, 1, 8, 0); }));
+            row.Children.Add(T(en.label, 13.5, FontWeights.SemiBold));
+            var b = Chrome(row, Brushes.Transparent, GlassFill, new CornerRadius(9), new Thickness(10, 7, 18, 7), stretch: true);
+            b.BorderThickness = new Thickness(0);
+            b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+            var act = en.click;
+            b.Click += (_, _) => { menu.IsOpen = false; act(); };
+            menu.Items.Add(b);
+        }
+    }
+
+    static ControlTemplate? menuTpl;
+    static ControlTemplate MenuTemplate()
+    {
+        if (menuTpl != null) return menuTpl;
+        var tpl = new ControlTemplate(typeof(ContextMenu));
+        var bd = new FrameworkElementFactory(typeof(Border));
+        bd.SetValue(Border.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0x1A, 0x1C, 0x22)));
+        bd.SetValue(Border.BorderBrushProperty, GlassEdge);
+        bd.SetValue(Border.BorderThicknessProperty, new Thickness(1));
+        bd.SetValue(Border.CornerRadiusProperty, new CornerRadius(14));
+        bd.SetValue(Border.PaddingProperty, new Thickness(6));
+        bd.SetValue(FrameworkElement.MinWidthProperty, 210.0);
+        var ip = new FrameworkElementFactory(typeof(StackPanel));
+        ip.SetValue(Panel.IsItemsHostProperty, true);
+        bd.AppendChild(ip);
+        tpl.VisualTree = bd;
+        menuTpl = tpl;
+        return tpl;
+    }
+
+    /// <summary>Gives an element a right-click menu whose entries are built when it opens (so they reflect current state).</summary>
+    public static void RightClick(FrameworkElement el, Func<IEnumerable<(string, string, Action)?>> entries)
+    {
+        var menu = Menu();
+        el.ContextMenu = menu;
+        el.ContextMenuOpening += (_, _) => FillMenu(menu, entries());
+    }
 }

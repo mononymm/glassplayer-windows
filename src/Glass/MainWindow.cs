@@ -60,6 +60,7 @@ public sealed class MainWindow : Window, IShell
         FontFamily = Ui.Font;
         try { Icon = new System.Windows.Media.Imaging.BitmapImage(new Uri("pack://application:,,,/Assets/glass.ico")); } catch { }
         Library = new PlexLibrary(settings);
+        Ui.MenuFor = MenuFor;
 
         root.Children.Add(pageHost);
         if (settings.SidebarExpanded) pageHost.Margin = new Thickness(NavExpanded - NavCollapsed, 0, 0, 0);
@@ -154,6 +155,53 @@ public sealed class MainWindow : Window, IShell
         Show(make(), key, animate: true);
     }
 
+    // ---------------------------------------------------------------- right-click menu
+
+    IEnumerable<(string, string, Action)?> MenuFor(Item it)
+    {
+        const string IcoRestart = "\uE72C", IcoEye = "\uE7B3", IcoEyeOff = "\uED1A", IcoList = "\uE8FD", IcoShow = "\uE7F4";
+        var list = new List<(string, string, Action)?>();
+        if (it.IsPlayable)
+        {
+            list.Add((it.InProgress ? $"Resume  ·  {it.RemainingText}" : "Play", IcoPlay, () => Play(it)));
+            if (it.InProgress || it.Watched) list.Add(("Play from beginning", IcoRestart, () => Play(it, fromStart: true)));
+            list.Add(null);
+            list.Add(it.Watched ? ("Mark as unwatched", IcoEyeOff, () => Mark(new[] { it }, false))
+                                : ("Mark as watched", IcoEye, () => Mark(new[] { it }, true)));
+            if (it.Kind == Kind.Episode && it.Season is { } season)
+            {
+                var rest = season.Children.Where(e => e.File != null && e.Index <= it.Index).ToList();
+                if (rest.Count > 1) list.Add(("Mark watched up to here", IcoCheck, () => Mark(rest, true)));
+                list.Add(null);
+                list.Add(($"Go to {(season.Title != "" ? season.Title : $"Season {season.Index}")}", IcoList,
+                    () => Navigate(new DetailPage(this, it.Show, season), "item:" + it.Show.Id)));
+                list.Add(($"Go to {it.Show.Title}", IcoShow, () => OpenItem(it.Show)));
+            }
+            else if (it.Kind == Kind.Movie)
+            {
+                list.Add(null);
+                list.Add(("Details", IcoInfo, () => OpenItem(it)));
+            }
+        }
+        else if (it.Kind == Kind.Show)
+        {
+            list.Add(("Open", IcoShow, () => OpenItem(it)));
+            if (it.UpNext() is { } next)
+                list.Add(($"{(next.InProgress ? "Resume" : "Play")} {next.Code.Replace(" · ", " ")}", IcoPlay, () => Play(next)));
+            list.Add(null);
+            var eps = it.Episodes.Where(e => e.File != null).ToList();
+            if (eps.Any(e => !e.Watched)) list.Add(("Mark show as watched", IcoEye, () => Mark(eps, true)));
+            if (eps.Any(e => e.Watched || e.InProgress)) list.Add(("Mark show as unwatched", IcoEyeOff, () => Mark(eps, false)));
+        }
+        return list;
+    }
+
+    async void Mark(IEnumerable<Item> items, bool watched)
+    {
+        await WatchState.SetAsync(settings, items, watched);
+        RefreshCurrent(currentKey);
+    }
+
     public void OpenItem(Item item) => Navigate(new DetailPage(this, item), "item:" + item.Show.Id);
     public void OpenSection(Section s) => Navigate(new SectionPage(this, s), "section:" + s.Id);
 
@@ -246,7 +294,7 @@ public sealed class MainWindow : Window, IShell
 
     // ---------------------------------------------------------------- playback
 
-    public void Play(Item item)
+    public void Play(Item item, bool fromStart = false)
     {
         if (settings.MpvPath == null || !File.Exists(settings.MpvPath))
         {
@@ -263,7 +311,7 @@ public sealed class MainWindow : Window, IShell
         playerLayer.Visibility = Visibility.Visible;
         playerLayer.Opacity = 0;
         playerLayer.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(200)));
-        Dispatcher.BeginInvoke(() => mpv.Play(new WindowInteropHelper(this).Handle, PlayerRect(), list.Select(i => i.File!).ToList(), start),
+        Dispatcher.BeginInvoke(() => mpv.Play(new WindowInteropHelper(this).Handle, PlayerRect(), list.Select(i => i.File!).ToList(), start, fromStart),
             System.Windows.Threading.DispatcherPriority.Loaded);
     }
 

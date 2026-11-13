@@ -31,7 +31,7 @@ public sealed class MpvPlayer
 
     /// <param name="ownerHwnd">The app window; mpv stays above it and minimizes with it.</param>
     /// <param name="rect">Player area in screen pixels.</param>
-    public void Play(IntPtr ownerHwnd, (int x, int y, int w, int h) rect, IReadOnlyList<string> files, int start)
+    public void Play(IntPtr ownerHwnd, (int x, int y, int w, int h) rect, IReadOnlyList<string> files, int start, bool fromStart = false)
     {
         Stop();
         owner = ownerHwnd;
@@ -61,6 +61,7 @@ public sealed class MpvPlayer
         psi.ArgumentList.Add($"--geometry={rect.w}x{rect.h}+{rect.x}+{rect.y}");
         psi.ArgumentList.Add("--log-file=" + Path.Combine(Data.Settings.CacheDir, "mpv.log"));
         psi.ArgumentList.Add($"--playlist-start={start}");
+        if (fromStart) psi.ArgumentList.Add("--start=0");   // tells the Glass script not to resume
         psi.ArgumentList.Add($"--playlist={playlist}");
 
         proc = Process.Start(psi);

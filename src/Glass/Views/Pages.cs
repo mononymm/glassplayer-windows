@@ -20,7 +20,7 @@ public interface IShell
     IReadOnlyList<Section> Sections { get; }
     void SaveSettings();
     void Navigate(FrameworkElement page, string key);
-    void Play(Item item);
+    void Play(Item item, bool fromStart = false);
     void OpenItem(Item item);
     void OpenSection(Section s);
 }
@@ -362,7 +362,7 @@ public sealed class DetailPage : GlassPage
     readonly StackPanel seasonTabs = new() { Orientation = Orientation.Horizontal, Margin = new Thickness(Ui.Inset, 0, 64, 20) };
     Item? season;
 
-    public DetailPage(IShell shell, Item it)
+    public DetailPage(IShell shell, Item it, Item? focusSeason = null)
     {
         this.shell = shell;
         item = it.Show;
@@ -415,7 +415,7 @@ public sealed class DetailPage : GlassPage
         if (item.Kind == Kind.Show)
         {
             var seasons = item.Children.Where(s => s.Children.Any(e => e.File != null)).OrderBy(s => s.Index == 0 ? int.MaxValue : s.Index).ToList();
-            var start = next?.Season ?? seasons.FirstOrDefault();
+            var start = (focusSeason != null && seasons.Contains(focusSeason) ? focusSeason : null) ?? next?.Season ?? seasons.FirstOrDefault();
             Body.Children.Add(seasonTabs.With(p => p.Margin = new Thickness(Ui.Inset, -20, 64, 22)));
             foreach (var s in seasons)
             {
@@ -504,6 +504,7 @@ public sealed class DetailPage : GlassPage
         row.MouseEnter += (_, _) => { row.Background = Ui.GlassFill; play.BeginAnimation(OpacityProperty, new DoubleAnimation(1, dur)); };
         row.MouseLeave += (_, _) => { row.Background = Brushes.Transparent; play.BeginAnimation(OpacityProperty, new DoubleAnimation(0, dur)); };
         row.MouseLeftButtonUp += (_, _) => shell.Play(ep);
+        if (Ui.MenuFor != null) RightClick(row, () => Ui.MenuFor(ep));
         return row;
     }
 }

@@ -71,6 +71,17 @@ public sealed class Item
         _ => Enumerable.Empty<Item>(),
     };
 
+    /// <summary>For a show: the episode in progress, else the next unwatched after the last one finished.</summary>
+    public Item? UpNext()
+    {
+        var eps = Episodes.Where(e => e.File != null).ToList();
+        var inProgress = eps.Where(e => e.InProgress).OrderByDescending(e => e.LastViewed).FirstOrDefault();
+        if (inProgress != null) return inProgress;
+        var last = eps.Where(e => e.Watched).OrderByDescending(e => e.LastViewed).FirstOrDefault();
+        if (last != null) return eps.Skip(eps.IndexOf(last) + 1).FirstOrDefault(e => !e.Watched) ?? eps.FirstOrDefault(e => !e.Watched);
+        return eps.FirstOrDefault();
+    }
+
     public int UnwatchedCount => Kind is Kind.Show or Kind.Season ? Episodes.Count(e => !e.Watched) : 0;
 
     public string Code => Kind == Kind.Episode
