@@ -89,7 +89,11 @@ public sealed class MainWindow : Window, IShell
         root.Children.Add(loading);
         Content = root;
 
-        SourceInitialized += (_, _) => DarkTitleBar();
+        SourceInitialized += (_, _) =>
+        {
+            DarkTitleBar();
+            HwndSource.FromHwnd(new WindowInteropHelper(this).Handle)?.AddHook(TopEdgeHitTest);
+        };
         Loaded += async (_, _) => await Reload(goHome: true);
         PreviewKeyDown += OnKey;
         MouseUp += (_, e) => { if (e.ChangedButton == MouseButton.XButton1) GoBack(); };
@@ -493,6 +497,36 @@ public sealed class MainWindow : Window, IShell
         if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control) { GoTo("search", () => new SearchPage(this)); e.Handled = true; }
         else if (e.Key == Key.Escape || e.Key == Key.Back && e.OriginalSource is not TextBox) { GoBack(); e.Handled = true; }
         else if (e.Key == Key.F5) { _ = Reload(goHome: currentKey == "home"); e.Handled = true; }
+    }
+
+    // ---------------------------------------------------------------- top edge when maximized
+
+    [DllImport("user32.dll")]
+    static extern IntPtr DefWindowProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+
+    /// <summary>
+    /// Maximized, the very top row of the screen came back as a window edge, which does nothing
+    /// on a maximized window, so flicking the mouse up to drag, minimize or close missed. Treat
+    /// that row as whatever is just below it: the title bar or one of its buttons.
+    /// </summary>
+    IntPtr TopEdgeHitTest(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        const int WM_NCHITTEST = 0x84;
+        if (msg != WM_NCHITTEST || WindowState != WindowState.Maximized || fullscreen) return IntPtr.Zero;
+        var hit = (int)DefWindowProc(hwnd, msg, wParam, lParam);
+        // HTNOWHERE, HTERROR, HTTOP, HTTOPLEFT, HTTOPRIGHT, HTBORDER
+        if (hit is not (0 or -2 or 12 or 13 or 14 or 18)) return IntPtr.Zero;
+        long lp = lParam.ToInt64();
+        int x = (short)(lp & 0xFFFF), y = (short)((lp >> 16) & 0xFFFF);
+        for (int dy = 2; dy <= 10; dy += 2)
+        {
+            var below = (IntPtr)((((y + dy) & 0xFFFF) << 16) | (x & 0xFFFF));
+            var h = (int)DefWindowProc(hwnd, msg, wParam, below);
+            // HTCAPTION, HTSYSMENU, HTMINBUTTON, HTMAXBUTTON, HTCLOSE
+            if (h is 2 or 3 or 8 or 9 or 20) { handled = true; return (IntPtr)h; }
+            if (h == 1) break; // reached the page itself
+        }
+        return IntPtr.Zero;
     }
 
     // ---------------------------------------------------------------- dark title bar
