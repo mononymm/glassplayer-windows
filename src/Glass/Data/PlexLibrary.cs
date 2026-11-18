@@ -80,9 +80,13 @@ public sealed class Item
         var inProgress = eps.Where(e => e.InProgress).OrderByDescending(e => e.LastViewed).FirstOrDefault();
         if (inProgress != null) return inProgress;
         var last = eps.Where(e => e.Watched).OrderByDescending(e => e.LastViewed).FirstOrDefault();
-        if (last != null) return eps.Skip(eps.IndexOf(last) + 1).FirstOrDefault(e => !e.Watched) ?? eps.FirstOrDefault(e => !e.Watched);
+        // Skip episodes in the same file as the last one watched (multi-episode files).
+        if (last != null) return eps.Skip(eps.IndexOf(last) + 1).FirstOrDefault(e => !e.Watched && !SameFile(e, last)) ?? eps.FirstOrDefault(e => !e.Watched && !SameFile(e, last));
         return eps.FirstOrDefault();
     }
+
+    static bool SameFile(Item a, Item b) =>
+        a.File != null && b.File != null && PlexLibrary.NormPath(a.File) == PlexLibrary.NormPath(b.File);
 
     public int UnwatchedCount => Kind is Kind.Show or Kind.Season ? Episodes.Count(e => !e.Watched) : 0;
 
@@ -287,7 +291,8 @@ public sealed class PlexLibrary
             {
                 var eps = last.Show.Episodes.Where(e => e.File != null).ToList();
                 var idx = eps.IndexOf(last);
-                var next = eps.Skip(idx + 1).FirstOrDefault(e => !e.Watched);
+                var lastFile = last.File == null ? null : NormPath(last.File);
+                var next = eps.Skip(idx + 1).FirstOrDefault(e => !e.Watched && (lastFile == null || NormPath(e.File!) != lastFile));
                 if (next != null) { next.LastViewed = next.LastViewed > last.LastViewed ? next.LastViewed : last.LastViewed; list.Add(next); }
             }
         }

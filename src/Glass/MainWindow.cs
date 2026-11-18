@@ -346,10 +346,14 @@ public sealed class MainWindow : Window, IShell
             if (!AskForMpv()) return;
         }
         List<Item> list;
-        if (item.Kind == Kind.Episode) list = item.Show.Episodes.Where(e => e.File != null).ToList();
+        // One playlist entry per file: Plex lists a "S01E01-E02" file as two episodes, which
+        // made the same file play twice in a row.
+        if (item.Kind == Kind.Episode)
+            list = item.Show.Episodes.Where(e => e.File != null)
+                .GroupBy(e => PlexLibrary.NormPath(e.File!)).Select(g => g.First()).ToList();
         else if (item.Kind == Kind.Show) { OpenItem(item); return; }
         else list = new() { item };
-        var start = Math.Max(0, list.IndexOf(item));
+        var start = Math.Max(0, item.File == null ? 0 : list.FindIndex(e => PlexLibrary.NormPath(e.File!) == PlexLibrary.NormPath(item.File)));
 
         mpv ??= CreatePlayer();
         sidebar.Visibility = Visibility.Collapsed;
