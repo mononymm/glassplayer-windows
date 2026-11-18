@@ -1,7 +1,10 @@
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Net.Http;
+using System.Text.Json.Nodes;
 using Microsoft.Data.Sqlite;
+using Microsoft.Win32;
 
 namespace Glass.Data;
 
@@ -277,9 +280,62 @@ public sealed class PlexLibrary
         catch { }
     }
 
-    /// <summary>One entry per show: the episode in progress, or the next one after the last finished.</summary>
+    // ---- Continue watching ----
+
+    static readonly HttpClient plexHttp = new() { Timeout = TimeSpan.FromSeconds(4) };
+    List<int>? serverContinue;
+    DateTime serverContinueAt = DateTime.MinValue;
+
+    /// <summary>A Plex Media Server setting for the Windows user running Glass (null if unset).</summary>
+    static string? PlexPref(string name)
+    {
+        try { return Registry.CurrentUser.OpenSubKey(@"Software\Plex, Inc.\Plex Media Server")?.GetValue(name)?.ToString(); }
+        catch { return null; }
+    }
+
+    /// <summary>
+    /// Asks the Plex server on this PC for its own Continue Watching list, so Glass shows what the
+    /// phone and TV show: Plex's weeks window, item limit, season premieres, and anything removed
+    /// with "Remove from Continue Watching". Returns true if the list changed.
+    /// </summary>
+    public async Task<bool> RefreshServerContinueWatching()
+    {
+        if (DateTime.Now - serverContinueAt < TimeSpan.FromSeconds(30)) return false;
+        serverContinueAt = DateTime.Now;
+        var token = PlexPref("PlexOnlineToken");
+        if (token == null) return false;
+        try
+        {
+            using var req = new HttpRequestMessage(HttpMethod.Get, "http://127.0.0.1:32400/hubs/continueWatching/items");
+            req.Headers.Add("X-Plex-Token", token);   // header, so the token stays out of the URL
+            req.Headers.Add("Accept", "application/json");
+            using var resp = await plexHttp.SendAsync(req);
+            if (!resp.IsSuccessStatusCode) return false;
+            var root = JsonNode.Parse(await resp.Content.ReadAsStringAsync());
+            var ids = (root?["MediaContainer"]?["Metadata"] as JsonArray ?? new JsonArray())
+                .Select(m => int.TryParse(m?["ratingKey"]?.ToString(), out var id) ? id : 0)
+                .Where(id => id != 0).ToList();
+            var changed = serverContinue == null || !serverContinue.SequenceEqual(ids);
+            serverContinue = ids;
+            return changed;
+        }
+        catch { return false; }
+    }
+
+    /// <summary>
+    /// Plex's own list when the server on this PC answers; otherwise one entry per show (the
+    /// episode in progress, or the next after the last finished) within Plex's
+    /// "Weeks to consider for Continue Watching" window and item limit.
+    /// </summary>
     public List<Item> ContinueWatching(int max = 24)
     {
+        if (serverContinue != null)
+            return serverContinue.Select(id => ById.TryGetValue(id, out var it) ? it : null)
+                .Where(it => it is { File: not null }).Select(it => it!).Take(max).ToList();
+
+        var weeks = int.TryParse(PlexPref("OnDeckWindow"), out var w) ? w : 16;
+        var limit = int.TryParse(PlexPref("OnDeckLimit"), out var l) && l > 0 ? Math.Min(l, max) : max;
+        var since = DateTime.Now.AddDays(-7 * weeks);
         var list = new List<Item>();
         var playable = ById.Values.Where(i => i.IsPlayable && i.File != null && i.LastViewed > DateTime.MinValue);
         foreach (var g in playable.GroupBy(i => i.Kind == Kind.Episode ? i.Show.Id : -i.Id))
@@ -296,7 +352,7 @@ public sealed class PlexLibrary
                 if (next != null) { next.LastViewed = next.LastViewed > last.LastViewed ? next.LastViewed : last.LastViewed; list.Add(next); }
             }
         }
-        return list.OrderByDescending(i => i.LastViewed).Take(max).ToList();
+        return list.Where(i => i.LastViewed >= since).OrderByDescending(i => i.LastViewed).Take(limit).ToList();
     }
 
     public List<Item> RecentlyAdded(Section s, int max = 30) =>

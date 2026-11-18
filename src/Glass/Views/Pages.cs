@@ -150,6 +150,8 @@ public sealed class HomePage : GlassPage
         }
 
         var cw = lib.ContinueWatching();
+        // Plex's own list arrives from the server a moment later; rebuild once if it differs.
+        Loaded += async (_, _) => { if (await lib.RefreshServerContinueWatching()) shell.RefreshPage(); };
         heroItems = cw.Take(6).ToList();
         if (heroItems.Count == 0) heroItems = shell.Sections.SelectMany(s => lib.RecentlyAdded(s, 3)).Take(6).ToList();
         ShowHero(0);
