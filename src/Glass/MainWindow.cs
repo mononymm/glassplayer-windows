@@ -504,29 +504,80 @@ public sealed class MainWindow : Window, IShell
     [DllImport("user32.dll")]
     static extern IntPtr DefWindowProc(IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
 
+    int topRowPressed;   // title-bar button pressed on the top row (HTMINBUTTON/HTMAXBUTTON/HTCLOSE)
+
     /// <summary>
-    /// Maximized, the very top row of the screen came back as a window edge, which does nothing
-    /// on a maximized window, so flicking the mouse up to drag, minimize or close missed. Treat
-    /// that row as whatever is just below it: the title bar or one of its buttons.
+    /// Maximized, clicks on the very top row of the screen were dropped (the close button even lit
+    /// up, but nothing happened). Glass handles that row itself as whatever is just below it: the
+    /// title bar or one of its buttons.
     /// </summary>
     IntPtr TopEdgeHitTest(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
+        const int WM_NCHITTEST = 0x84, WM_NCLBUTTONDOWN = 0xA1, WM_NCLBUTTONUP = 0xA2, WM_NCLBUTTONDBLCLK = 0xA3;
+        if (msg is not (WM_NCHITTEST or WM_NCLBUTTONDOWN or WM_NCLBUTTONUP or WM_NCLBUTTONDBLCLK)) return IntPtr.Zero;
+        if (WindowState != WindowState.Maximized || fullscreen) { topRowPressed = 0; return IntPtr.Zero; }
+        var (hit, below) = TopRowHit(hwnd, lParam);
+        if (hit == 0)
+        {
+            if (msg == WM_NCLBUTTONUP) topRowPressed = 0;
+            return IntPtr.Zero;
+        }
+        handled = true;
+        switch (msg)
+        {
+            case WM_NCHITTEST:
+                return (IntPtr)hit;
+            case WM_NCLBUTTONDOWN:
+                if (hit is 2 or 3)
+                {
+                    // Drag (or restore by dragging) as if the bar was grabbed just below the edge.
+                    topRowPressed = 0;
+                    DefWindowProc(hwnd, WM_NCLBUTTONDOWN, (IntPtr)2, below);
+                }
+                else topRowPressed = hit;
+                return IntPtr.Zero;
+            case WM_NCLBUTTONUP:
+                var pressed = topRowPressed;
+                topRowPressed = 0;
+                if (pressed != 0 && pressed == hit)
+                {
+                    if (hit == 20) Close();
+                    else if (hit == 8) WindowState = WindowState.Minimized;
+                    else if (hit == 9) WindowState = WindowState.Normal;
+                }
+                return IntPtr.Zero;
+            default: // double-click on the bar restores, as it does below the edge
+                if (hit is 2 or 3) WindowState = WindowState.Normal;
+                return IntPtr.Zero;
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] struct MONITORINFO { public int cbSize; public RECT rcMonitor, rcWork; public int dwFlags; }
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr hwnd, int flags);
+    [DllImport("user32.dll")] static extern bool GetMonitorInfo(IntPtr hMonitor, ref MONITORINFO mi);
+
+    /// <summary>
+    /// For a point in the top two rows of the screen on a maximized window: the title-bar part a few
+    /// pixels below it (HTCAPTION, HTSYSMENU, HTMINBUTTON, HTMAXBUTTON or HTCLOSE) and that lower
+    /// point. (0, _) anywhere else.
+    /// </summary>
+    static (int hit, IntPtr below) TopRowHit(IntPtr hwnd, IntPtr lParam)
+    {
         const int WM_NCHITTEST = 0x84;
-        if (msg != WM_NCHITTEST || WindowState != WindowState.Maximized || fullscreen) return IntPtr.Zero;
-        var hit = (int)DefWindowProc(hwnd, msg, wParam, lParam);
-        // HTNOWHERE, HTERROR, HTTOP, HTTOPLEFT, HTTOPRIGHT, HTBORDER
-        if (hit is not (0 or -2 or 12 or 13 or 14 or 18)) return IntPtr.Zero;
         long lp = lParam.ToInt64();
         int x = (short)(lp & 0xFFFF), y = (short)((lp >> 16) & 0xFFFF);
-        for (int dy = 2; dy <= 10; dy += 2)
+        var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };
+        if (!GetMonitorInfo(MonitorFromWindow(hwnd, 2 /* nearest */), ref mi)) return (0, IntPtr.Zero);
+        if (y > mi.rcWork.Top + 1) return (0, IntPtr.Zero);
+        for (int dy = 3; dy <= 11; dy += 2)
         {
             var below = (IntPtr)((((y + dy) & 0xFFFF) << 16) | (x & 0xFFFF));
-            var h = (int)DefWindowProc(hwnd, msg, wParam, below);
-            // HTCAPTION, HTSYSMENU, HTMINBUTTON, HTMAXBUTTON, HTCLOSE
-            if (h is 2 or 3 or 8 or 9 or 20) { handled = true; return (IntPtr)h; }
+            var h = (int)DefWindowProc(hwnd, WM_NCHITTEST, IntPtr.Zero, below);
+            if (h is 2 or 3 or 8 or 9 or 20) return (h, below);
             if (h == 1) break; // reached the page itself
         }
-        return IntPtr.Zero;
+        return (0, IntPtr.Zero);
     }
 
     // ---------------------------------------------------------------- dark title bar
