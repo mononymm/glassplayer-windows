@@ -111,12 +111,17 @@ public sealed class MpvPlayer
         try { writer?.WriteLine(JsonSerializer.Serialize(new { command = args })); } catch { }
     }
 
+    /// <summary>
+    /// Finds mpv's video window and puts it over the player area. Looks for the window by
+    /// process and class (Process.MainWindowHandle could miss it), and keeps looking for up to a
+    /// minute: when mpv's window came late, Glass used to give up after 5 s, leaving mpv playing
+    /// wherever it opened and "Starting mpv…" on screen.
+    /// </summary>
     async Task AttachWindowAsync(Process p)
     {
-        for (int i = 0; i < 100 && ReferenceEquals(p, proc) && !p.HasExited; i++)
+        for (int i = 0; i < 600 && ReferenceEquals(p, proc) && !p.HasExited; i++)
         {
-            p.Refresh();
-            var h = p.MainWindowHandle;
+            var h = FindMpvWindow(p.Id);
             if (h != IntPtr.Zero)
             {
                 hwnd = h;
@@ -128,8 +133,30 @@ public sealed class MpvPlayer
                 SetForegroundWindow(h);
                 return;
             }
-            await Task.Delay(50);
+            await Task.Delay(i < 100 ? 50 : 100);
         }
+    }
+
+    delegate bool EnumWindowsProc(IntPtr h, IntPtr lParam);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder name, int max);
+
+    /// <summary>mpv's top-level window (class "mpv") belonging to process [pid], or zero.</summary>
+    static IntPtr FindMpvWindow(int pid)
+    {
+        var found = IntPtr.Zero;
+        EnumWindows((h, _) =>
+        {
+            GetWindowThreadProcessId(h, out var owner);
+            if (owner != (uint)pid) return true;
+            var name = new StringBuilder(32);
+            GetClassName(h, name, name.Capacity);
+            if (name.ToString() != "mpv") return true;
+            found = h;
+            return false;
+        }, IntPtr.Zero);
+        return found;
     }
 
     async Task ConnectAsync(string name, Process owner)
