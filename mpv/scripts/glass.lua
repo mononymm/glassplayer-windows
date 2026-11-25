@@ -1297,8 +1297,18 @@ plex_reload = function(force)
                     sh_year = tonumber(c[19]), id = tonumber(c[20]),
                 }
                 e.done = e.views > 0 and e.pos < 1
-                items[plex_norm(c[1])] = e
-                if t > 0 then recent[#recent + 1] = e end
+                -- A "S01E01-E02" file is one row per episode: keep one entry per file with every
+                -- episode's id (so all of them get marked watched) and the newest viewing state.
+                local fk = plex_norm(c[1])
+                local prev = items[fk]
+                if prev then
+                    prev.ids[#prev.ids + 1] = e.id
+                    if e.t > prev.t then prev.pos, prev.views, prev.t, prev.done = e.pos, e.views, e.t, e.done end
+                else
+                    e.ids = { e.id }
+                    items[fk] = e
+                    if t > 0 then recent[#recent + 1] = e end
+                end
             end
         end
         table.sort(recent, function(p1, p2) return p1.t > p2.t end)
@@ -2901,8 +2911,18 @@ plex.push = function(force)
         return
     end
     plex.pushed = { path = cur_path, pos = cur_pos, done = done }
-    mp.command_native_async({ name = "subprocess", playback_only = false, capture_stdout = true, capture_stderr = true,
-        args = { "curl.exe", "-s", "-m", "5", "-o", "NUL", "-H", "@" .. plex.token, url } }, function() end)
+    local urls = { url }
+    if done then -- every episode stored in this file counts as watched
+        for _, id in ipairs(px.ids or {}) do
+            if id ~= px.id then
+                urls[#urls + 1] = string.format("http://127.0.0.1:32400/:/scrobble?key=%d&identifier=com.plexapp.plugins.library", id)
+            end
+        end
+    end
+    for _, u in ipairs(urls) do
+        mp.command_native_async({ name = "subprocess", playback_only = false, capture_stdout = true, capture_stderr = true,
+            args = { "curl.exe", "-s", "-m", "5", "-o", "NUL", "-H", "@" .. plex.token, u } }, function() end)
+    end
 end
 -- Plex's token lives in the registry of the Windows user that runs Plex; read it once
 mp.command_native_async({ name = "subprocess", playback_only = false, capture_stdout = true, capture_stderr = true,

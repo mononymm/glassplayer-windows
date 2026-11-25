@@ -323,6 +323,21 @@ public sealed class PlexLibrary
     }
 
     /// <summary>
+    /// Plex can offer the second half of a "S01E01-E02" file after the first half was watched,
+    /// which is the same file again. Move such an episode on to the next one in a different file.
+    /// </summary>
+    static Item? PastWatchedFile(Item it)
+    {
+        if (it.Kind != Kind.Episode || it.File == null) return it;
+        var file = NormPath(it.File);
+        var eps = it.Show.Episodes.Where(e => e.File != null).ToList();
+        var same = eps.Where(e => NormPath(e.File!) == file).ToList();
+        if (!same.Any(e => e.Watched && e.Id != it.Id)) return it;
+        var last = same.Max(e => eps.IndexOf(e));
+        return eps.Skip(last + 1).FirstOrDefault(e => !e.Watched && NormPath(e.File!) != file);
+    }
+
+    /// <summary>
     /// Plex's own list when the server on this PC answers; otherwise one entry per show (the
     /// episode in progress, or the next after the last finished) within Plex's
     /// "Weeks to consider for Continue Watching" window and item limit.
@@ -331,7 +346,8 @@ public sealed class PlexLibrary
     {
         if (serverContinue != null)
             return serverContinue.Select(id => ById.TryGetValue(id, out var it) ? it : null)
-                .Where(it => it is { File: not null }).Select(it => it!).Take(max).ToList();
+                .Where(it => it is { File: not null }).Select(it => PastWatchedFile(it!))
+                .Where(it => it != null).Select(it => it!).DistinctBy(it => it.Id).Take(max).ToList();
 
         var weeks = int.TryParse(PlexPref("OnDeckWindow"), out var w) ? w : 16;
         var limit = int.TryParse(PlexPref("OnDeckLimit"), out var l) && l > 0 ? Math.Min(l, max) : max;
